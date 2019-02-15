@@ -1,0 +1,7 @@
+# binaries
+*.o
+mdriver
+
+# IDE
+.vs
+.vscode

@@ -63,11 +63,23 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+/* Comment in "#define DEBUG" to enable mm_check to check heap consitensy 
+ * Usage: add theses lines into the code where mm_check is suposed to be called
+ *  
+   #ifdef
+   #define CHECKHEAP(verbose) printf("%s\n", __func__); mm_check(verbose);
+   #endif
+ */
+
+#define DEBUG 
+
+
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
+    // IMPORTANT: reset all variables including global variables
     return 0;
 }
 
@@ -90,6 +102,7 @@ void *mm_malloc(size_t size)
 
 /*
  * mm_free - Freeing a block does nothing.
+ * ToDo: we want to mark the area as free and update surrounding headers if necessary
  */
 void mm_free(void *ptr)
 {
@@ -115,4 +128,23 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+}
+
+/*
+ * mm_check - Checks the integrety and consitancy of the heap
+ */ 
+int mm_check(void) 
+{
+    /*    ToDo:
+     * Is every block in the free list marked as free?
+     * Are there any contiguous free blocks that somehow escaped coalescing?
+     * Is every free block actually in the free list?
+     * Do the pointers in the free list point to valid free blocks?
+     * Do any allocated blocks overlap?
+     * Do the pointers in a heap block point to valid heap addresses?
+     * 
+     * It returns a nonzero value if and only if the heap is consistent
+     */ 
+
+    return 0;
 }

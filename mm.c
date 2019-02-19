@@ -8,6 +8,8 @@
  *
  * NOTE TO STUDENTS: Replace this header comment with your own header
  * comment that gives a high level description of your solution.
+ * -------------------------------------------------------------------
+ * mm.c - Simple allocator based on
  *
  */
 #include <stdio.h>
@@ -214,7 +216,7 @@ int checkFreeList(void)
             char *f_list = free_listp;
 
             while (bp != f_list) {
-                f_list = f_next(f_list); /* WARNING f_next er EKKI til (hvernig traverse free list??) */
+                f_list = *(f_list + WSIZE) /* WARNING f_next er EKKI til (hvernig traverse free list??) */
 
                 if (f_list == NULL) { /* reached end of free list */
                     printf("Error: the free block %p is not in the free list\n", bp);

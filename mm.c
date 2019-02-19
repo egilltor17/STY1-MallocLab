@@ -62,6 +62,36 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+/* ---------------------------------------------------- */
+/* $begin mallocmacros */
+/* Basic constants and macros */
+#define WSIZE       4       /* word size (bytes) */
+#define DSIZE       8       /* doubleword size (bytes) */
+#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
+#define OVERHEAD    8       /* overhead of header and footer (bytes) */
+
+#define MAX(x, y) ((x) > (y)? (x) : (y))
+
+/* Pack a size and allocated bit into a word */
+#define PACK(size, alloc)  ((size) | (alloc))
+
+/* Read and write a word at address p */
+#define GET(p)         (*(size_t *)(p))
+#define PUT(p, val)    (*(size_t *)(p) = (val))
+
+/* (which is about 49/100).* Read the size and allocated fields from address p */
+#define GET_SIZE(p)    (GET(p) & ~0x7)
+#define GET_ALLOC(p)   (GET(p) & 0x1)
+
+/* Given block ptr bp, compute address of its header and footer */
+#define HDRP(bp)       ((char *)(bp) - WSIZE)
+#define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+
+/* Given block ptr bp, compute address of next and previous blocks */
+#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
+#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+/* $end mallocmacros */
+
 /* Comment in "#define DEBUG" to enable mm_check to check heap consitensy 
  * Usage: add theses lines into the code where mm_check is suposed to be called
  *  
@@ -72,6 +102,15 @@ team_t team = {
 
 #define DEBUG 
 
+/* Global variables */
+static char *heap_listp; /* pointer to start of heap */
+static char *free_listp; /* pointer to start of free_list */
+
+/* function prototypes for internal helper routines */
+int mm_check(void);
+int checkFreeList(void);
+int checkValidBlock(void);
+int checkOverlap(void);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -145,5 +184,66 @@ int mm_check(void)
      * It returns a nonzero value if and only if the heap is consistent
      */ 
 
-    return 0;
+    if (checkFreeList() == 0) {
+        return 0;
+    }
+    if (checkValidBlock() == 0) {
+        return 0;
+    }
+    if (checkOverlap() == 0) {
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * - checkFreeList -
+ * Checks that every free block on the heap
+ * is on the free list
+ * and ..............
+ * returns 1 if every free block is on the free list
+ * returns 0 if not
+ */
+int checkFreeList(void)
+{
+    char *bp = heap_listp; /* pointer to the beginning of the heap */
+
+    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+
+        if (GET_ALLOC(HDRP(bp)) == 0) { /* if free block */
+            char *f_list = free_listp;
+
+            while (bp != f_list) {
+                f_list = f_next(f_list); /* WARNING f_next er EKKI til (hvernig traverse free list??) */
+
+                if (f_list == NULL) { /* reached end of free list */
+                    printf("Error: the free block %p is not in the free list\n", bp);
+                    return 0;
+                }
+            }
+        }
+    }
+    return 1; /* every block has been checked */
+}
+
+/*
+ * - checkValidHeap -
+ *
+ *
+ */
+int checkValidBlock(void)
+{
+    char *bp = heap_listp; /* pointer to the beginning of the heap */
+
+    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+        if ((size_t)bp % 8) {
+            printf("Error: %p is not doubleword aligned\n", bp);
+            return 0;
+        }
+        if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+            printf("Error: in block %p header does not match footer\n", bp);
+            return 0;
+        }
+    }
+    return 1; /* every block has been checked */
 }

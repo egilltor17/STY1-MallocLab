@@ -28,30 +28,30 @@
  *       Format!
  *
  * === User information ===
- * Group: 
- * User 1: 
- * SSN: X
- * User 2: 
- * SSN: X
- * User 3: 
- * SSN: X
+ * Group: Pending-group-name
+ * User 1: egilltor17
+ * SSN: 250697-2529
+ * User 2: ernir17
+ * SSN: 180996-4279
+ * User 3: hallgrimura17
+ * SSN: 040396-2929
  * === End User Information ===
  ********************************************************/
 team_t team = {
     /* Group name */
-    "AA_AmnesiacAnonymous",
+    "Pending-group-name",
     /* First member's full name */
-    "Student Studentsson",
+    "Egill Torfason",
     /* First member's email address */
-    "student16@ru.is",
+    "egilltor17@ru.is",
     /* Second member's full name (leave blank if none) */
-    "",
+    "Ernir Snær Helgason",
     /* Second member's email address (leave blank if none) */
-    "",
+    "ernir17@ru.is",
     /* Third full name (leave blank if none) */
-    "",
+    "Hallgræimur Snær Andrésson",
     /* Third member's email address (leave blank if none) */
-    ""
+    "hallgrimura17@ru.is"
 };
 
 /* single word (4) or double word (8) alignment */

@@ -190,8 +190,8 @@ int mm_check(vrebose)
      * Are there any contiguous free blocks that somehow escaped coalescing?    - Done
      * Is every free block actually in the free list?                           - Done
      * Do the pointers in the free list point to valid free blocks?             - Done
-     * Do any allocated blocks overlap?                                         - 
-     * Do the pointers in a heap block point to valid heap addresses?           - 
+     * Do any allocated blocks overlap?                                         - Semi
+     * Do the pointers in a heap block point to valid heap addresses?           - Done
      */ 
 
     // char *bp = heap_prologe;    /* pointer to the beginning of the heap */
@@ -224,10 +224,6 @@ int mm_check(vrebose)
             printf("Error: the free block %p is not free (alocated)\n", f_list);
             return 0;
         }
-
-        if() {
-
-        }
     }  
 
     return 1;
@@ -252,8 +248,6 @@ int checkFreeBlockIsInFreeList(char *bp)
 
 /*
  * - checkValidHeap -
- *
- *
  */
 int checkValidBlock(char *bp)
 {
@@ -270,11 +264,7 @@ int checkValidBlock(char *bp)
 
 int checkBlockOverlap(char *bp) {
     if (HDRP(bp) < FTRP(PREV_BLKP(bp))) {
-        printf("Error: blocks %p and %p overlap\n", bp, PREV_BLKP(bp));
-        return 0;
-    }
-    if (FTRP(bp) > HDRP(NEXT_BLKP(bp))) {
-        printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
+        printf("Error: blocks %p and %p overlap\n", PREV_BLKP(bp), bp );
         return 0;
     }
     return 1;
@@ -288,4 +278,11 @@ int checkIfTwoContinuousFreeBlocks(char *bp) {
         }
     }
     return 1;
+}
+
+int checkIfOutOfBounds(char *bp) {
+    if(head_epiloge < NEXT_BLKP(bp) || PREV_BLKP(bp) < head_prologe) { /* The pointers in the free block point out of bounds */
+        printf("Error: the block %p is out of bounds\n", f_list);
+        return 0;
+    }
 }

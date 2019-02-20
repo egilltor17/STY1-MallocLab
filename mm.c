@@ -205,7 +205,7 @@ int mm_check(vrebose)
         if(!checkValidBlock(bp))                { return 0; }
         if(!checkBlockOverlap(bp))              { return 0; }
         if(!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
-        if(!checkIfOutOfBounds(char *bp))       { return 0; }
+        if(!checkIfOutOfBounds(*bp))            { return 0; }
     }
 
     /* Run through the free list */

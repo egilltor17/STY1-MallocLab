@@ -105,8 +105,9 @@ team_t team = {
 #define DEBUG 
 
 /* Global variables */
-static char *heap_listp; /* pointer to start of heap */
-static char *free_listp; /* pointer to start of free_list */
+static char *heap_prologe;  /* pointer to the start of heap */
+static char *heap_epiloge;  /* pointer to the end of heap */
+static char *free_listp;    /* pointer to the start of free_list */
 
 /* function prototypes for internal helper routines */
 int mm_check(void);
@@ -177,7 +178,7 @@ void *mm_realloc(void *ptr, size_t size)
 int mm_check(vrebose) 
 {
     /*    ToDo:
-     * Is every block in the free list marked as free?                          - 
+     * Is every block in the free list marked as free?                          - Done
      * Are there any contiguous free blocks that somehow escaped coalescing?    - Done
      * Is every free block actually in the free list?                           - Done
      * Do the pointers in the free list point to valid free blocks?             - 
@@ -185,11 +186,12 @@ int mm_check(vrebose)
      * Do the pointers in a heap block point to valid heap addresses?           - 
      */ 
 
-    char *bp = heap_listp; /* pointer to the beginning of the heap */
+    char *bp = heap_prologe;    /* pointer to the beginning of the heap */
+    char *f_list = free_listp;  /* pointer to the end of the heap */
     int lastAlocated = 1;
 
     /* Run through the heap implisitly */
-    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+    for (bp; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
         /* Are there any contiguous free blocks that somehow escaped coalescing? */
         if (lastAlocated == GET_ALLOC(HDRP(bp))) {
             printf("The heap is not coalesced ", bp);
@@ -197,17 +199,22 @@ int mm_check(vrebose)
         } 
         lastAlocated = GET_ALLOC(HDRP(bp));
 
-        if (!checkFreeBlockIsInFreeList(bp)) { return 0; }      
-        if (!checkValidBlock(bp)) { return 0; }
+        if (!checkFreeBlockIsInFreeList(bp))    { return 0; }      
+        if (!checkValidBlock(bp))               { return 0; }
+        if (!checkBlockOverlap())               { return 0; }
     }
 
 
     /* Run through the free list */
-  
-    
-    if (checkBlockOverlap() == 0) {
-        return 0;
-    }
+    while (f_list != head_epiloge) {
+        f_list = *(f_list + WSIZE)      /* The second word in the "payload" is the pointer to the next free block */
+
+        if (GET_ALLOC(HDRP(f_list))) {  /* The block is alocated */
+            printf("Error: the free block %p is not free (alocated)\n", f_list);
+            return 0;
+        }
+    }  
+
     return 1;
 }
 
@@ -223,7 +230,7 @@ int checkFreeBlockIsInFreeList(char *bp)
         while (bp != f_list) {
             f_list = *(f_list + WSIZE) /* WARNING f_next er EKKI til (hvernig traverse free list??) */
 
-            if (f_list == NULL) { /* reached end of free list */
+            if (f_list == nullptr) { /* reached end of free list */
                 printf("Error: the free block %p is not in the free list\n", bp);
                 return 0;
             }

@@ -51,7 +51,7 @@ team_t team = {
     /* Second member's email address (leave blank if none) */
     "ernir17@ru.is",
     /* Third full name (leave blank if none) */
-    "Hallgræimur Snær Andrésson",
+    "Hallgrímur Snær Andrésson",
     /* Third member's email address (leave blank if none) */
     "hallgrimura17@ru.is"
 };
@@ -64,6 +64,14 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+
+/* 
+void *mem_sbrk(int incr); increases the breakpointer
+void *mem_heap_lo(void); return pointer to first byte in heap
+void *mem_heap_hi(void); return pointer to last byte in heap
+size_t mem_heapsize(void); return the current size of the heap in bytes
+size_t mem_pagesize(void); Returns the system’s page size in bytes (4K on Linux systems).
+*/
 /* ---------------------------------------------------- */
 /* $begin mallocmacros */
 /* Basic constants and macros */
@@ -194,7 +202,7 @@ int mm_check(vrebose)
 
         if (!checkFreeBlockIsInFreeList(bp))     { return 0; }      
         if (!checkValidBlock(bp))                { return 0; }
-        if (!checkBlockOverlap(br))              { return 0; }
+        if (!checkBlockOverlap(bp))              { return 0; }
         if (!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
 
     }
@@ -260,8 +268,16 @@ int checkValidBlock(char *bp)
     return 1; /* block passed */
 }
 
-int checkBlockOverlap(br) {
-    return 0;
+int checkBlockOverlap(char *bp) {
+    if (HDRP(bp) < FTRP(PREV_BLKP(bp))) {
+        printf("Error: blocks %p and %p overlap\n", bp, PREV_BLKP(bp));
+        return 0;
+    }
+    if (FTRP(bp) > HDRP(NEXT_BLKP(bp))) {
+        printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
+        return 0;
+    }
+    return 1;
 }
 
 int checkIfTwoContinuousFreeBlocks(char *bp) {

@@ -186,19 +186,15 @@ int mm_check(vrebose)
      */ 
 
     char *bp = heap_listp; /* pointer to the beginning of the heap */
-    int lastAlocated = 1;
+    
 
     /* Run through the heap implisitly */
     for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
-        /* Are there any contiguous free blocks that somehow escaped coalescing? */
-        if (lastAlocated == GET_ALLOC(HDRP(bp))) {
-            printf("The heap is not coalesced ", bp);
-            return 0;
-        } 
-        lastAlocated = GET_ALLOC(HDRP(bp));
+        
 
         if (!checkFreeBlockIsInFreeList(bp)) { return 0; }      
         if (!checkValidBlock(bp)) { return 0; }
+        if (!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
     }
 
 
@@ -239,25 +235,6 @@ int checkFreeBlockIsInFreeList(char *bp)
  */
 int checkValidBlock(char *bp)
 {
-<<<<<<< HEAD
-    char *bp = heap_listp; /* pointer to the beginning of the heap */
-
-    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
-        if ((size_t)bp % 8) {
-            printf("Error: %p is not doubleword aligned\n", bp);
-            return 0;
-        }
-        if (GET(HDRP(bp)) != GET(FTRP(bp))) {
-            printf("Error: in block %p header does not match footer\n", bp);
-            return 0;
-        }
-        if (GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
-            if (GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
-                printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
-                return 0;
-            }
-        }
-=======
     if ((size_t)bp % 8) {
         printf("Error: %p is not doubleword aligned\n", bp);
         return 0;
@@ -265,7 +242,16 @@ int checkValidBlock(char *bp)
     if (GET(HDRP(bp)) != GET(FTRP(bp))) {
         printf("Error: in block %p header does not match footer\n", bp);
         return 0;
->>>>>>> d4f86a8d78dd4fb4bc1ea0e0074995e436b841ef
     }
     return 1; /* every block has been checked */
+}
+
+
+int checkIfTwoContinuousFreeBlocks(char *bp) {
+    if (GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
+            if (GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
+                printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
+                return 0;
+            }
+        }
 }

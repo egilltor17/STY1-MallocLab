@@ -122,7 +122,8 @@ int mm_check(void);
 int checkFreeBlockIsInFreeList(char *bp);
 int checkValidBlock(char *bp);
 int checkBlockOverlap(char *bp);
-int checkIfTwoContinuousFreeBlocks(bp);
+int checkIfTwoContinuousFreeBlocks(char *bp);
+int checkIfOutOfBounds(char *bp)
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -200,11 +201,11 @@ int mm_check(vrebose)
     /* Run through the heap implisitly */
     for (char *bp = heap_prologe; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
 
-        if (!checkFreeBlockIsInFreeList(bp))     { return 0; }      
-        if (!checkValidBlock(bp))                { return 0; }
-        if (!checkBlockOverlap(bp))              { return 0; }
-        if (!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
-
+        if(!checkFreeBlockIsInFreeList(bp))     { return 0; }      
+        if(!checkValidBlock(bp))                { return 0; }
+        if(!checkBlockOverlap(bp))              { return 0; }
+        if(!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
+        if(!checkIfOutOfBounds(char *bp))       { return 0; }
     }
 
     /* Run through the free list */
@@ -285,4 +286,5 @@ int checkIfOutOfBounds(char *bp) {
         printf("Error: the block %p is out of bounds\n", f_list);
         return 0;
     }
+    return 1;
 }

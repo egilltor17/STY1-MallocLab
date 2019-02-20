@@ -110,9 +110,9 @@ static char *free_listp; /* pointer to start of free_list */
 
 /* function prototypes for internal helper routines */
 int mm_check(void);
-int checkFreeList(void);
-int checkValidBlock(void);
-int checkOverlap(void);
+int checkFreeBlockIsInFreeList(char *bp);
+int checkValidBlock(char *bp);
+int checkBlockOverlap(char *bp);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -171,61 +171,65 @@ void *mm_realloc(void *ptr, size_t size)
 }
 
 /*
- * mm_check - Checks the integrety and consitancy of the heap
+ * mm_check - Checks the integrety and consitancy of the heap.
+ * Returns a nonzero value if and only if the heap is consistent.
  */ 
-int mm_check(void) 
+int mm_check(vrebose) 
 {
     /*    ToDo:
-     * Is every block in the free list marked as free?
-     * Are there any contiguous free blocks that somehow escaped coalescing?
-     * Is every free block actually in the free list?
-     * Do the pointers in the free list point to valid free blocks?
-     * Do any allocated blocks overlap?
-     * Do the pointers in a heap block point to valid heap addresses?
-     * 
-     * It returns a nonzero value if and only if the heap is consistent
+     * Is every block in the free list marked as free?                          - 
+     * Are there any contiguous free blocks that somehow escaped coalescing?    - Done
+     * Is every free block actually in the free list?                           - Done
+     * Do the pointers in the free list point to valid free blocks?             - 
+     * Do any allocated blocks overlap?                                         - 
+     * Do the pointers in a heap block point to valid heap addresses?           - 
      */ 
 
-    if (checkFreeList() == 0) {
-        return 0;
+    char *bp = heap_listp; /* pointer to the beginning of the heap */
+    int lastAlocated = 1;
+
+    /* Run through the heap implisitly */
+    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+        /* Are there any contiguous free blocks that somehow escaped coalescing? */
+        if (lastAlocated == GET_ALLOC(HDRP(bp))) {
+            printf("The heap is not coalesced ", bp);
+            return 0;
+        } 
+        lastAlocated = GET_ALLOC(HDRP(bp));
+
+        if (!checkFreeBlockIsInFreeList(bp)) { return 0; }      
+        if (!checkValidBlock(bp)) { return 0; }
     }
-    if (checkValidBlock() == 0) {
-        return 0;
-    }
-    if (checkOverlap() == 0) {
+
+
+    /* Run through the free list */
+  
+    
+    if (checkBlockOverlap() == 0) {
         return 0;
     }
     return 1;
 }
 
 /*
- * - checkFreeList -
- * Checks that every free block on the heap
- * is on the free list
- * and ..............
- * returns 1 if every free block is on the free list
- * returns 0 if not
+ * - checkFreeBlockIsInFreeList -
+ * Returns a non zero number if a free block is in the free list.
  */
-int checkFreeList(void)
+int checkFreeBlockIsInFreeList(char *bp)
 {
-    char *bp = heap_listp; /* pointer to the beginning of the heap */
+    if (GET_ALLOC(HDRP(bp)) == 0) { /* if free block */
+        char *f_list = free_listp;
 
-    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+        while (bp != f_list) {
+            f_list = *(f_list + WSIZE) /* WARNING f_next er EKKI til (hvernig traverse free list??) */
 
-        if (GET_ALLOC(HDRP(bp)) == 0) { /* if free block */
-            char *f_list = free_listp;
-
-            while (bp != f_list) {
-                f_list = *(f_list + WSIZE) /* WARNING f_next er EKKI til (hvernig traverse free list??) */
-
-                if (f_list == NULL) { /* reached end of free list */
-                    printf("Error: the free block %p is not in the free list\n", bp);
-                    return 0;
-                }
+            if (f_list == NULL) { /* reached end of free list */
+                printf("Error: the free block %p is not in the free list\n", bp);
+                return 0;
             }
         }
     }
-    return 1; /* every block has been checked */
+    return 1; /* block is in the freelist */
 }
 
 /*
@@ -233,8 +237,9 @@ int checkFreeList(void)
  *
  *
  */
-int checkValidBlock(void)
+int checkValidBlock(char *bp)
 {
+<<<<<<< HEAD
     char *bp = heap_listp; /* pointer to the beginning of the heap */
 
     for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
@@ -252,6 +257,15 @@ int checkValidBlock(void)
                 return 0;
             }
         }
+=======
+    if ((size_t)bp % 8) {
+        printf("Error: %p is not doubleword aligned\n", bp);
+        return 0;
+    }
+    if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+        printf("Error: in block %p header does not match footer\n", bp);
+        return 0;
+>>>>>>> d4f86a8d78dd4fb4bc1ea0e0074995e436b841ef
     }
     return 1; /* every block has been checked */
 }

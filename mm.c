@@ -114,7 +114,7 @@ int mm_check(void);
 int checkFreeBlockIsInFreeList(char *bp);
 int checkValidBlock(char *bp);
 int checkBlockOverlap(char *bp);
-
+int checkIfTwoContinuousFreeBlocks(bp);
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -192,16 +192,12 @@ int mm_check(vrebose)
 
     /* Run through the heap implisitly */
     for (bp; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
-        /* Are there any contiguous free blocks that somehow escaped coalescing? */
-        if (lastAlocated == GET_ALLOC(HDRP(bp))) {
-            printf("The heap is not coalesced ", bp);
-            return 0;
-        } 
-        lastAlocated = GET_ALLOC(HDRP(bp));
 
         if (!checkFreeBlockIsInFreeList(bp))    { return 0; }      
         if (!checkValidBlock(bp))               { return 0; }
         if (!checkBlockOverlap())               { return 0; }
+        if (!checkIfTwoContinuousFreeBlocks(bp)){ return 0; }
+
     }
 
 
@@ -255,4 +251,14 @@ int checkValidBlock(char *bp)
         return 0;
     }
     return 1; /* every block has been checked */
+}
+
+
+int checkIfTwoContinuousFreeBlocks(char *bp) {
+    if (GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
+            if (GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
+                printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
+                return 0;
+            }
+        }
 }

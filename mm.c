@@ -202,19 +202,23 @@ int mm_check(vrebose)
     /* Run through the free list */
     for (char *f_list = free_listp; f_list != head_epiloge; f_list = *(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
 
-        if (!(f_list % 8)) {            /* The pointer is not 8bit alinged */
+        if(!(f_list % 8)) {             /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", f_list);
             return 0;
         }
 
-        if (head_epiloge < f_list || f_list < head_prologe) { /* The pointers in the free block point out of bounds */
+        if(head_epiloge < f_list || f_list < head_prologe) { /* The pointers in the free block point out of bounds */
             printf("Error: the free block %p points out of bounds\n", f_list);
             return 0;
         }
 
-        if (GET_ALLOC(HDRP(f_list))) {  /* The block is alocated */
+        if(GET_ALLOC(HDRP(f_list))) {   /* The block is alocated */
             printf("Error: the free block %p is not free (alocated)\n", f_list);
             return 0;
+        }
+
+        if() {
+
         }
     }  
 
@@ -246,7 +250,7 @@ int checkFreeBlockIsInFreeList(char *bp)
 int checkValidBlock(char *bp)
 {
     if((size_t)bp % 8) {
-        printf("Error: %p is not doubleword aligned\n", bp);
+        printf("Error: %p is not 8bit aligned\n", bp);
         return 0;
     }
     if(GET(HDRP(bp)) != GET(FTRP(bp))) {

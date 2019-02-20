@@ -194,7 +194,7 @@ int mm_check(vrebose)
 
         if (!checkFreeBlockIsInFreeList(bp))     { return 0; }      
         if (!checkValidBlock(bp))                { return 0; }
-        if (!checkBlockOverlap(br))              { return 0; }
+        if (!checkBlockOverlap(bp))              { return 0; }
         if (!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
 
     }
@@ -256,8 +256,16 @@ int checkValidBlock(char *bp)
     return 1; /* block passed */
 }
 
-int checkBlockOverlap(br) {
-    return 0;
+int checkBlockOverlap(char *bp) {
+    if (HDRP(bp) < FTRP(PREV_BLKP(bp))) {
+        printf("Error: blocks %p and %p overlap\n", bp, PREV_BLKP(bp));
+        return 0;
+    }
+    if (FTRP(bp) > HDRP(NEXT_BLKP(bp))) {
+        printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
+        return 0;
+    }
+    return 1;
 }
 
 int checkIfTwoContinuousFreeBlocks(char *bp) {

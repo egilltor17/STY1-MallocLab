@@ -66,10 +66,10 @@ team_t team = {
 
 
 /* 
-void *mem_sbrk(int incr); increases the breakpointer
-void *mem_heap_lo(void); return pointer to first byte in heap
-void *mem_heap_hi(void); return pointer to last byte in heap
-size_t mem_heapsize(void); return the current size of the heap in bytes
+void *mem_sbrk(int incr); Increases the breakpointer
+void *mem_heap_lo(void); Return pointer to first byte in heap
+void *mem_heap_hi(void); Return pointer to last byte in heap
+size_t mem_heapsize(void); Return the current size of the heap in bytes
 size_t mem_pagesize(void); Returns the system’s page size in bytes (4K on Linux systems).
 */
 /* ---------------------------------------------------- */

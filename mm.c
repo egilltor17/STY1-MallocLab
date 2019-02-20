@@ -181,7 +181,7 @@ int mm_check(vrebose)
      * Is every block in the free list marked as free?                          - Done
      * Are there any contiguous free blocks that somehow escaped coalescing?    - Done
      * Is every free block actually in the free list?                           - Done
-     * Do the pointers in the free list point to valid free blocks?             - 
+     * Do the pointers in the free list point to valid free blocks?             - Done
      * Do any allocated blocks overlap?                                         - 
      * Do the pointers in a heap block point to valid heap addresses?           - 
      */ 
@@ -200,15 +200,21 @@ int mm_check(vrebose)
 
     }
 
-
     /* Run through the free list */
     while (f_list != head_epiloge) {
         f_list = *(f_list + WSIZE)      /* The second word in the "payload" is the pointer to the next free block */
+
+        if (!(f_list % 8)) {            /* The pointer is not 8bit alinged */
+            printf("Error: the free block %p is not 8bit allinged\n", f_list);
+            return 0;
+        }
 
         if (GET_ALLOC(HDRP(f_list))) {  /* The block is alocated */
             printf("Error: the free block %p is not free (alocated)\n", f_list);
             return 0;
         }
+
+        
     }  
 
     return 1;

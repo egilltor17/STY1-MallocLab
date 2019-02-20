@@ -186,26 +186,29 @@ int mm_check(vrebose)
      * Do the pointers in a heap block point to valid heap addresses?           - 
      */ 
 
-    char *bp = heap_prologe;    /* pointer to the beginning of the heap */
-    char *f_list = free_listp;  /* pointer to the end of the heap */
-    int lastAlocated = 1;
+    // char *bp = heap_prologe;    /* pointer to the beginning of the heap */
+    // char *f_list = free_listp;  /* pointer to the end of the heap */
 
     /* Run through the heap implisitly */
-    for (bp; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+    for (char *bp = heap_prologe; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
 
-        if (!checkFreeBlockIsInFreeList(bp))    { return 0; }      
-        if (!checkValidBlock(bp))               { return 0; }
-        if (!checkBlockOverlap())               { return 0; }
-        if (!checkIfTwoContinuousFreeBlocks(bp)){ return 0; }
+        if (!checkFreeBlockIsInFreeList(bp))     { return 0; }      
+        if (!checkValidBlock(bp))                { return 0; }
+        if (!checkBlockOverlap(br))              { return 0; }
+        if (!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
 
     }
 
     /* Run through the free list */
-    while (f_list != head_epiloge) {
-        f_list = *(f_list + WSIZE)      /* The second word in the "payload" is the pointer to the next free block */
+    for (char *f_list = free_listp; f_list != head_epiloge; f_list = *(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
 
         if (!(f_list % 8)) {            /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", f_list);
+            return 0;
+        }
+
+        if (head_epiloge < f_list || f_list < head_prologe) { /* The pointers in the free block point out of bounds */
+            printf("Error: the free block %p points out of bounds\n", f_list);
             return 0;
         }
 
@@ -213,8 +216,6 @@ int mm_check(vrebose)
             printf("Error: the free block %p is not free (alocated)\n", f_list);
             return 0;
         }
-
-        
     }  
 
     return 1;
@@ -226,13 +227,9 @@ int mm_check(vrebose)
  */
 int checkFreeBlockIsInFreeList(char *bp)
 {
-    if (GET_ALLOC(HDRP(bp)) == 0) { /* if free block */
-        char *f_list = free_listp;
-
-        while (bp != f_list) {
-            f_list = *(f_list + WSIZE) /* WARNING f_next er EKKI til (hvernig traverse free list??) */
-
-            if (f_list == nullptr) { /* reached end of free list */
+    if(GET_ALLOC(HDRP(bp)) == 0) {      /* if block is free */
+        for(char *f_list = free_listp; f_list != bp; f_list = *(f_list + WSIZE)) {
+            if (f_list == nullptr) {    /* reached end of free list */
                 printf("Error: the free block %p is not in the free list\n", bp);
                 return 0;
             }
@@ -248,23 +245,27 @@ int checkFreeBlockIsInFreeList(char *bp)
  */
 int checkValidBlock(char *bp)
 {
-    if ((size_t)bp % 8) {
+    if((size_t)bp % 8) {
         printf("Error: %p is not doubleword aligned\n", bp);
         return 0;
     }
-    if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+    if(GET(HDRP(bp)) != GET(FTRP(bp))) {
         printf("Error: in block %p header does not match footer\n", bp);
         return 0;
     }
-    return 1; /* every block has been checked */
+    return 1; /* block passed */
 }
 
+int checkBlockOverlap(br) {
+    return 0;
+}
 
 int checkIfTwoContinuousFreeBlocks(char *bp) {
-    if (GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
-            if (GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
-                printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
-                return 0;
-            }
+    if(GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
+        if(GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
+            printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
+            return 0;
         }
+    }
+    return 1;
 }

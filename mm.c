@@ -205,7 +205,7 @@ int mm_check(vrebose)
         if(!checkValidBlock(bp))                { return 0; }
         if(!checkBlockOverlap(bp))              { return 0; }
         if(!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
-        if(!checkIfOutOfBounds(char *bp))       { return 0; }
+        if(!checkIfOutOfBounds(bp))       { return 0; }
     }
 
     /* Run through the free list */
@@ -268,6 +268,10 @@ int checkBlockOverlap(char *bp) {
         printf("Error: blocks %p and %p overlap\n", PREV_BLKP(bp), bp );
         return 0;
     }
+    if (FTRP(bp) > HDRP(NEXT_BLKP(bp)) {
+        printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
+        return 0;
+    })
     return 1;
 }
 

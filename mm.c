@@ -246,6 +246,12 @@ int checkValidBlock(void)
             printf("Error: in block %p header does not match footer\n", bp);
             return 0;
         }
+        if (GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
+            if (GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
+                printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
+                return 0;
+            }
+        }
     }
     return 1; /* every block has been checked */
 }

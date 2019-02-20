@@ -113,23 +113,36 @@ size_t mem_pagesize(void); Returns the system’s page size in bytes (4K on Linu
 #define DEBUG 
 
 /* Global variables */
-static char *heap_prologe;  /* pointer to the start of heap */
-static char *heap_epiloge;  /* pointer to the end of heap */
+static char *heap_prologue;  /* pointer to the start of heap */
+static char *heap_epilogue;  /* pointer to the end of heap */
 static char *free_listp;    /* pointer to the start of free_list */
 
 /* function prototypes for internal helper routines */
-int mm_check(void);
+int mm_check(int verbose);
 int checkFreeBlockIsInFreeList(char *bp);
 int checkValidBlock(char *bp);
 int checkBlockOverlap(char *bp);
 int checkIfTwoContinuousFreeBlocks(char *bp);
-int checkIfOutOfBounds(char *bp)
+int checkIfOutOfBounds(char *bp);
+
+static void *extend_heap(size_t words);
+static void *coalesce(void *bp);
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
     // IMPORTANT: reset all variables including global variables
+    /* init empty heap */
+    if ((heap_prologue = mem_sbrk(4*WSIZE)) == NULL) { return -1; }
+    
+    PUT(heap_prologue, 0);                          /* Alingment padding */
+    PUT(heap_prologue+WSIZE, PACK(OVERHEAD, 1));    /* prolouge header */
+    PUT(heap_prologue+DSIZE, PACK(OVERHEAD, 1));    /* epilouge footer */
+    PUT(heap_prologue+WSIZE+DSIZE, PACK(0, 1));     /* epilouge header */
+    
+    /* Extend the empty heap with a free block of CHUNKSIZE bytes */
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL) { return -1; }
     return 0;
 }
 
@@ -180,11 +193,74 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
+/****************************** Helper Functions ************************************/
+/************************************************************************************/
+
+/* 
+ * extend_heap - Extend heap with free block and return its block pointer
+ */
+static void *extend_heap(size_t words) 
+{
+    char *bp;
+    size_t size;
+        
+    /* Allocate an even number of words to maintain alignment */
+    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
+    if ((bp = mem_sbrk(size)) == (void *)-1) {
+        return NULL;
+    }
+
+    /* Initialize free block header/footer and the epilogue header */
+    PUT(HDRP(bp), PACK(size, 0));         /* free block header */
+    PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* new epilogue header */
+
+    /* Coalesce if the previous block was free */
+    return coalesce(bp);
+}
+
+/*
+ * coalesce - boundary tag coalescing. Return ptr to coalesced block
+ */
+static void *coalesce(void *bp) 
+{
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t size = GET_SIZE(HDRP(bp));
+
+    if (prev_alloc && next_alloc) {            /* Case 1 */
+        return bp;
+    }
+    else if (prev_alloc && !next_alloc) {      /* Case 2 */
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size,0));
+    }
+    else if (!prev_alloc && next_alloc) {      /* Case 3 */
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    else {                                     /* Case 4 */
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
+            GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+
+    return bp;
+}
+
+/************************************************************************************/
+/************************************************************************************/
+
 /*
  * mm_check - Checks the integrety and consitancy of the heap.
  * Returns a nonzero value if and only if the heap is consistent.
  */ 
-int mm_check(vrebose) 
+int mm_check(int vrebose) 
 {
     /*    ToDo:
      * Is every block in the free list marked as free?                          - Done
@@ -195,28 +271,28 @@ int mm_check(vrebose)
      * Do the pointers in a heap block point to valid heap addresses?           - Done
      */ 
 
-    // char *bp = heap_prologe;    /* pointer to the beginning of the heap */
+    // char *bp = heap_prologue;    /* pointer to the beginning of the heap */
     // char *f_list = free_listp;  /* pointer to the end of the heap */
 
     /* Run through the heap implisitly */
-    for (char *bp = heap_prologe; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
+    for (char *bp = heap_prologue; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
 
         if(!checkFreeBlockIsInFreeList(bp))     { return 0; }      
         if(!checkValidBlock(bp))                { return 0; }
         if(!checkBlockOverlap(bp))              { return 0; }
         if(!checkIfTwoContinuousFreeBlocks(bp)) { return 0; }
-        if(!checkIfOutOfBounds(bp))            { return 0; }
+        if(!checkIfOutOfBounds(bp))             { return 0; }
     }
 
     /* Run through the free list */
-    for (char *f_list = free_listp; f_list != head_epiloge; f_list = *(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
+    for (char *f_list = free_listp; f_list != heap_epilogue; f_list = *(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
 
-        if(!(f_list % 8)) {             /* The pointer is not 8bit alinged */
+        if((int)f_list & 0x7) {             /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", f_list);
             return 0;
         }
 
-        if(head_epiloge < f_list || f_list < head_prologe) { /* The pointers in the free block point out of bounds */
+        if(heap_epilogue < f_list || f_list < heap_prologue) { /* The pointers in the free block point out of bounds */
             printf("Error: the free block %p points out of bounds\n", f_list);
             return 0;
         }
@@ -234,11 +310,11 @@ int mm_check(vrebose)
  * - checkFreeBlockIsInFreeList -
  * Returns a non zero number if a free block is in the free list.
  */
-int checkFreeBlockIsInFreeList(char *bp)
+int checkFreeBlockIsInFreeList(char *bp) 
 {
     if(GET_ALLOC(HDRP(bp)) == 0) {      /* if block is free */
         for(char *f_list = free_listp; f_list != bp; f_list = *(f_list + WSIZE)) {
-            if (f_list == nullptr) {    /* reached end of free list */
+            if (f_list == NULL) {    /* reached end of free list */
                 printf("Error: the free block %p is not in the free list\n", bp);
                 return 0;
             }
@@ -250,7 +326,7 @@ int checkFreeBlockIsInFreeList(char *bp)
 /*
  * - checkValidHeap -
  */
-int checkValidBlock(char *bp)
+int checkValidBlock(char *bp) 
 {
     if((size_t)bp % 8) {
         printf("Error: %p is not 8bit aligned\n", bp);
@@ -263,19 +339,21 @@ int checkValidBlock(char *bp)
     return 1; /* block passed */
 }
 
-int checkBlockOverlap(char *bp) {
+int checkBlockOverlap(char *bp) 
+{
     if (HDRP(bp) < FTRP(PREV_BLKP(bp))) {
         printf("Error: blocks %p and %p overlap\n", PREV_BLKP(bp), bp );
         return 0;
     }
-    if (FTRP(bp) > HDRP(NEXT_BLKP(bp)) {
+    if (FTRP(bp) > HDRP(NEXT_BLKP(bp))) {
         printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
         return 0;
-    })
+    }
     return 1;
 }
 
-int checkIfTwoContinuousFreeBlocks(char *bp) {
+int checkIfTwoContinuousFreeBlocks(char *bp) 
+{
     if(GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
         if(GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
             printf("Error: block %p and %p are free adjecent blocks", PREV_BLKP(bp), bp);
@@ -285,9 +363,10 @@ int checkIfTwoContinuousFreeBlocks(char *bp) {
     return 1;
 }
 
-int checkIfOutOfBounds(char *bp) {
-    if(head_epiloge < NEXT_BLKP(bp) || PREV_BLKP(bp) < head_prologe) { /* The pointers in the free block point out of bounds */
-        printf("Error: the block %p is out of bounds\n", f_list);
+int checkIfOutOfBounds(char *bp) 
+{
+    if(heap_epilogue < NEXT_BLKP(bp) || PREV_BLKP(bp) < heap_prologue) { /* The pointers in the free block point out of bounds */
+        printf("Error: the block %p is out of bounds\n", bp);
         return 0;
     }
     return 1;

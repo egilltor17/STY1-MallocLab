@@ -105,12 +105,12 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Comment in "#define DEBUG" to enable mm_check to check heap consitensy 
  * Usage: add theses lines into the code where mm_check is suposed to be called
  *  
-   #ifdef
+   #ifdef 
    #define CHECKHEAP(verbose) printf("%s\n", __func__); mm_check(verbose);
    #endif
  */
 
-#define DEBUG 
+#define DEBUG
 
 /* Global variables */
 static char *heap_prologue;  /* pointer to the start of heap */
@@ -124,6 +124,7 @@ int checkValidBlock(char *bp);
 int checkBlockOverlap(char *bp);
 int checkIfTwoContinuousFreeBlocks(char *bp);
 int checkIfOutOfBounds(char *bp);
+static void printblock(void *bp); 
 
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
@@ -134,18 +135,19 @@ int mm_init(void)
 {
     // IMPORTANT: reset all variables including global variables
     /* init empty heap */
-    if ((heap_prologue = mem_sbrk(4*WSIZE)) == NULL) { return -1; }
-    
-    PUT(heap_prologue, 0);                          /* Alingment padding */
+    if ((heap_prologue = mem_sbrk(WSIZE << 2)) == NULL) { return -1; }
+    PUT(heap_prologue, 0);                          /* Alignment padding */
     PUT(heap_prologue+WSIZE, PACK(OVERHEAD, 1));    /* prolouge header */
-    PUT(heap_prologue+DSIZE, PACK(OVERHEAD, 1));    /* epilouge footer */
+    PUT(heap_prologue+DSIZE, PACK(OVERHEAD, 1));    /* prolouge footer */
     PUT(heap_prologue+WSIZE+DSIZE, PACK(0, 1));     /* epilouge header */
-    
+    heap_prologue += DSIZE;
     heap_epilogue = NULL;
     free_listp = NULL;
-
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) { return -1; }
+    free_listp = NEXT_BLKP(heap_prologue);
+    PUT(free_listp, 0);                             /* pred pointer is null */
+    PUT(free_listp + WSIZE, heap_epilogue);         /* succ pointer is epilogue */
     return 0;
 }
 
@@ -206,7 +208,6 @@ static void *extend_heap(size_t words)
 {
     char *bp;
     size_t size;
-        
     /* Allocate an even number of words to maintain alignment */
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
     if ((bp = mem_sbrk(size)) == (void *)-1) { return NULL; }
@@ -215,9 +216,9 @@ static void *extend_heap(size_t words)
     PUT(HDRP(bp), PACK(size, 0));         /* free block header */
     PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* new epilogue header */
-
+    heap_epilogue = NEXT_BLKP(bp);
     /* Coalesce if the previous block was free */
-    return coalesce(bp);
+    return 1;
 }
 
 /*
@@ -264,7 +265,7 @@ static void *coalesce(void *bp)
  * 
  * Returns a nonzero value if and only if the heap is consistent.
  */ 
-int mm_check(int vrebose) 
+int mm_check(int verbose) 
 {
     /*    ToDo:
      * Is every block in the free list marked as free?                          - Done
@@ -277,10 +278,9 @@ int mm_check(int vrebose)
 
     // char *bp = heap_prologue;    /* pointer to the beginning of the heap */
     // char *f_list = free_listp;  /* pointer to the end of the heap */
-
-    /* Run through the heap implisitly */
+    /* Run through the heap implicitly */
     for (char *bp = heap_prologue; 0 < GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
-
+        printblock(bp);
         if(!checkFreeBlockIsInFreeList(bp))     { return 0; }      
         if(!checkValidBlock(bp))                { return 0; }
         if(!checkBlockOverlap(bp))              { return 0; }
@@ -289,16 +289,15 @@ int mm_check(int vrebose)
     }
 
     /* Run through the free list */
-    // ToDo: fix warning ------------------------------------------ \/
     for (char *f_list = free_listp; f_list != heap_epilogue; f_list = (char*)*(size_t*)(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
         
         if((int)f_list & 0x7) {             /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", f_list);
-            return 0;
+           return 0;
         }
 
         if(heap_epilogue < f_list || f_list < heap_prologue) { /* The pointers in the free block point out of bounds */
-            printf("Error: the free block %p points out of bounds\n", f_list);
+            printf("Error: the free block %p points out of bounds    %p < %p || %p < %p\n", f_list, heap_epilogue, f_list,  f_list, heap_prologue);
             return 0;
         }
 
@@ -307,7 +306,6 @@ int mm_check(int vrebose)
             return 0;
         }
     }  
-
     return 1;
 }
 
@@ -318,7 +316,6 @@ int mm_check(int vrebose)
 int checkFreeBlockIsInFreeList(char *bp) 
 {
     if(GET_ALLOC(HDRP(bp)) == 0) {      /* if block is free */
-        // ToDo: fix warning ------------------------------ \/
         for(char *f_list = free_listp; f_list != bp; f_list = (char*)*(size_t*)(f_list + WSIZE)) {
             if (f_list == NULL) {    /* reached end of free list */
                 printf("Error: the free block %p is not in the free list\n", bp);
@@ -334,12 +331,12 @@ int checkFreeBlockIsInFreeList(char *bp)
  */
 int checkValidBlock(char *bp) 
 {
-    if((size_t)bp % 8) {
+    if((size_t)bp & 0x7) {
         printf("Error: %p is not 8bit aligned\n", bp);
         return 0;
     }
     if(GET(HDRP(bp)) != GET(FTRP(bp))) {
-        printf("Error: in block %p header does not match footer\n", bp);
+        printf("Error: in block %p header does not match footer  h%p f%p\n" , bp, GET(HDRP(bp)), GET(FTRP(bp)));
         return 0;
     }
     return 1; /* block passed */
@@ -347,10 +344,6 @@ int checkValidBlock(char *bp)
 
 int checkBlockOverlap(char *bp) 
 {
-    if (HDRP(bp) < FTRP(PREV_BLKP(bp))) {
-        printf("Error: blocks %p and %p overlap\n", PREV_BLKP(bp), bp );
-        return 0;
-    }
     if (FTRP(bp) > HDRP(NEXT_BLKP(bp))) {
         printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
         return 0;
@@ -376,4 +369,23 @@ int checkIfOutOfBounds(char *bp)
         return 0;
     }
     return 1;
+}
+
+static void printblock(void *bp) 
+{
+    size_t hsize, halloc, fsize, falloc;
+
+    hsize = GET_SIZE(HDRP(bp));
+    halloc = GET_ALLOC(HDRP(bp));  
+    fsize = GET_SIZE(FTRP(bp));
+    falloc = GET_ALLOC(FTRP(bp));  
+    
+    if (hsize == 0) {
+        printf("%p: EOL\n", bp);
+        return;
+    }
+
+    printf("%p: h: [%d:%c] f: [%d:%c]\n", bp, 
+           hsize, (halloc ? 'a' : 'f'), 
+           fsize, (falloc ? 'a' : 'f')); 
 }

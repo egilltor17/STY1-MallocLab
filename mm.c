@@ -9,8 +9,28 @@
  * NOTE TO STUDENTS: Replace this header comment with your own header
  * comment that gives a high level description of your solution.
  * -------------------------------------------------------------------
- * mm.c - Simple allocator based on
+ * mm.c - Simple allocator based on an explisit freelist. Stay tuned for more info!
  *
+ * Each block has header and footer of the form:
+ * 
+ *      31  30 29 28  ...  5  4  3  2  1  0 
+ *      -------------------------------------
+ *     | s  s  s  s   ...  s  s  s  0  0  a/f
+ *      ------------------------------------- 
+ * 
+ * where s are the meaningful size bits and a/f is set 
+ * iff the block is allocated. The list has the following form:
+ * 
+ * begin                                                          end
+ * heap                                                           heap  
+ *  -----------------------------------------------------------------   
+ * |  pad   | hdr(8:a) | ftr(8:a) | zero or more usr blks | hdr(8:a) |
+ *  -----------------------------------------------------------------
+ *          |       prologue      |                       | epilogue |
+ *          |         block       |                       | block    |
+ *
+ * The allocated prologue and epilogue blocks are overhead that
+ * eliminate edge conditions during coalescing.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -196,8 +216,8 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
-/****************************** Helper Functions ************************************/
-/************************************************************************************/
+/****************************** Helper Functions ********************************/
+/********************************************************************************/
 
 /* 
  * extend_heap - Extend heap with free block and return its block pointer
@@ -254,13 +274,13 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-/************************************************************************************/
-/************************************************************************************/
+/****************************** Checker Functions *******************************/
+/********************************************************************************/
 
 /*
  * mm_check - Checks the integrety and consitancy of the heap.
  * 
- * The checker is written for our pending implenentation so we are 
+ * The checker is written for our pending implenentation so we are ....
  * 
  * Returns a nonzero value if and only if the heap is consistent.
  */ 

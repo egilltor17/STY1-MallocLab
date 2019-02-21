@@ -66,11 +66,11 @@ team_t team = {
 
 
 /* 
-void *mem_sbrk(int incr); Increases the breakpointer
-void *mem_heap_lo(void); Return pointer to first byte in heap
-void *mem_heap_hi(void); Return pointer to last byte in heap
-size_t mem_heapsize(void); Return the current size of the heap in bytes
-size_t mem_pagesize(void); Returns the system’s page size in bytes (4K on Linux systems).
+void *mem_sbrk(int incr);   Increases the breakpointer
+void *mem_heap_lo(void);    Return pointer to first byte in heap
+void *mem_heap_hi(void);    Return pointer to last byte in heap
+size_t mem_heapsize(void);  Return the current size of the heap in bytes
+size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Linux systems).
 */
 /* ---------------------------------------------------- */
 /* $begin mallocmacros */
@@ -115,7 +115,7 @@ size_t mem_pagesize(void); Returns the system’s page size in bytes (4K on Linu
 /* Global variables */
 static char *heap_prologue;  /* pointer to the start of heap */
 static char *heap_epilogue;  /* pointer to the end of heap */
-static char *free_listp;    /* pointer to the start of free_list */
+static char *free_listp;     /* pointer to the start of free_list */
 
 /* function prototypes for internal helper routines */
 int mm_check(int verbose);
@@ -141,6 +141,9 @@ int mm_init(void)
     PUT(heap_prologue+DSIZE, PACK(OVERHEAD, 1));    /* epilouge footer */
     PUT(heap_prologue+WSIZE+DSIZE, PACK(0, 1));     /* epilouge header */
     
+    heap_epilogue = NULL;
+    free_listp = NULL;
+
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) { return -1; }
     return 0;
@@ -206,9 +209,7 @@ static void *extend_heap(size_t words)
         
     /* Allocate an even number of words to maintain alignment */
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
-    if ((bp = mem_sbrk(size)) == (void *)-1) {
-        return NULL;
-    }
+    if ((bp = mem_sbrk(size)) == (void *)-1) { return NULL; }
 
     /* Initialize free block header/footer and the epilogue header */
     PUT(HDRP(bp), PACK(size, 0));         /* free block header */
@@ -228,21 +229,21 @@ static void *coalesce(void *bp)
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
-    if (prev_alloc && next_alloc) {            /* Case 1 */
+    if (prev_alloc && next_alloc) {            /* Case 1: Both blocks are allocated, no coalessing reqired */
         return bp;
     }
-    else if (prev_alloc && !next_alloc) {      /* Case 2 */
+    else if (prev_alloc && !next_alloc) {      /* Case 2: Next block is free */
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     }
-    else if (!prev_alloc && next_alloc) {      /* Case 3 */
+    else if (!prev_alloc && next_alloc) {      /* Case 3: Previous block is free */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-    else {                                     /* Case 4 */
+    else {                                     /* Case 4: Both blocks are free  */
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
             GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
@@ -258,6 +259,9 @@ static void *coalesce(void *bp)
 
 /*
  * mm_check - Checks the integrety and consitancy of the heap.
+ * 
+ * The checker is written for our pending implenentation so we are 
+ * 
  * Returns a nonzero value if and only if the heap is consistent.
  */ 
 int mm_check(int vrebose) 
@@ -285,8 +289,9 @@ int mm_check(int vrebose)
     }
 
     /* Run through the free list */
-    for (char *f_list = free_listp; f_list != heap_epilogue; f_list = *(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
-
+    // ToDo: fix warning ------------------------------------------ \/
+    for (char *f_list = free_listp; f_list != heap_epilogue; f_list = (char*)*(size_t*)(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
+        
         if((int)f_list & 0x7) {             /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", f_list);
             return 0;
@@ -313,7 +318,8 @@ int mm_check(int vrebose)
 int checkFreeBlockIsInFreeList(char *bp) 
 {
     if(GET_ALLOC(HDRP(bp)) == 0) {      /* if block is free */
-        for(char *f_list = free_listp; f_list != bp; f_list = *(f_list + WSIZE)) {
+        // ToDo: fix warning ------------------------------ \/
+        for(char *f_list = free_listp; f_list != bp; f_list = (char*)*(size_t*)(f_list + WSIZE)) {
             if (f_list == NULL) {    /* reached end of free list */
                 printf("Error: the free block %p is not in the free list\n", bp);
                 return 0;

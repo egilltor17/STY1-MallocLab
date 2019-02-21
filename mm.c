@@ -120,6 +120,9 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+
+#define NEXT_FREE_BLKP(bp) ((char*)*(size_t*)((bp) + WSIZE))
+#define PREV_FREE_BLKP(bp) ((char*)*(size_t*)(bp))
 /* $end mallocmacros */
 
 /* Comment in "#define DEBUG" to enable mm_check to check heap consitensy 
@@ -178,6 +181,20 @@ int mm_init(void)
 void *mm_malloc(size_t size)
 {
     int newsize = ALIGN(size + SIZE_T_SIZE);
+    char* bp = free_listp;
+    while(bp != heap_epilogue) {
+        if(!(GET_SIZE(HDRP(free_listp)) <= newsize)) {
+            break;
+        }
+        bp = NEXT_FREE_BLKP(bp);
+    }
+    size_t free_size = GET_SIZE(HDRP(bp)) - newsize;
+    PUT(FTRP(bp), PACK(free_size, 0));          /* update free footer size */
+    PUT(HDRP(bp), PACK(newsize, 1));            /* new allocated header */  
+    PUT(FTRP(bp), PACK(newsize, 1));            /* new allocated footer */
+    PUT(FTRP(bp) + WSIZE, PACK(free_size, 0));  /* new free header */
+    mm_check(1);
+    /*int newsize = ALIGN(size + SIZE_T_SIZE);
     void *p = mem_sbrk(newsize);
     if (p == (void *)-1) {
         return NULL;
@@ -185,7 +202,7 @@ void *mm_malloc(size_t size)
     else {
         *(size_t *)p = size;
         return (void *)((char *)p + SIZE_T_SIZE);
-    }
+    }*/
 }
 
 /*
@@ -309,7 +326,7 @@ int mm_check(int verbose)
     }
 
     /* Run through the free list */
-    for (char *f_list = free_listp; f_list != heap_epilogue; f_list = (char*)*(size_t*)(f_list + WSIZE)) { /* The second word in the "payload" is the pointer to the next free block */
+    for (char *f_list = free_listp; f_list != heap_epilogue; f_list = NEXT_FREE_BLKP(f_list)) { /* The second word in the "payload" is the pointer to the next free block */
         
         if((int)f_list & 0x7) {             /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", f_list);
@@ -336,7 +353,7 @@ int mm_check(int verbose)
 int checkFreeBlockIsInFreeList(char *bp) 
 {
     if(GET_ALLOC(HDRP(bp)) == 0) {      /* if block is free */
-        for(char *f_list = free_listp; f_list != bp; f_list = (char*)*(size_t*)(f_list + WSIZE)) {
+        for(char *f_list = free_listp; f_list != bp; f_list = NEXT_FREE_BLKP(f_list)) {
             if (f_list == NULL) {    /* reached end of free list */
                 printf("Error: the free block %p is not in the free list\n", bp);
                 return 0;

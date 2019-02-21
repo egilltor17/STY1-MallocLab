@@ -105,7 +105,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Comment in "#define DEBUG" to enable mm_check to check heap consitensy 
  * Usage: add theses lines into the code where mm_check is suposed to be called
  *  
-   #ifdef
+   #ifdef DEBUG
    #define CHECKHEAP(verbose) printf("%s\n", __func__); mm_check(verbose);
    #endif
  */

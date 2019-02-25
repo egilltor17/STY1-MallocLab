@@ -292,6 +292,30 @@ static void *coalesce(void *bp)
     return bp;
 }
 
+static void *add_to_free_list(void *bp) {
+    PUT(free_listp, bp);             /* set the pred pointer of the free list head to bp */
+    PUT(bp, 0);                      /* set the pred pointer of the new free list head to NULL */
+    PUT(bp + WSIZE, free_listp);     /* set the succ pointer of the new free list head to the previous free list head */
+    free_listp = bp;                 /* set the beginning of free list to be bp */
+}
+
+static void *remove_from_free_list(void *bp) {
+    if (GET(bp) != 0 && GET(bp + WSIZE) != heap_epilogue) { /* removing from middle of free list */
+        PUT(PREV_FREE_BLKP(bp) + WSIZE, bp + WSIZE); /* set the succ pointer of the previous free block to point to bp's successor */
+        PUT(NEXT_FREE_BLKP(bp), bp);                 /* set the pred pointer of the next free block to point to bp's predecessor */
+    }
+    else if (GET(bp) != 0) {                                /* removing from end of list */
+        PUT(PREV_FREE_BLKP(bp) + WSIZE, bp + WSIZE); /* set the succ pointer of the previous free block to point to bp's successor(epilogue) */
+    }
+    else if (GET(bp + WSIZE) != heap_epilogue) {            /* removing from beginning of list */
+        free_listp = NEXT_FREE_BLKP(bp);             /* set the beginning of free list to be the next free block */
+        PUT(NEXT_FREE_BLKP(bp), bp);                 /* set the pred pointer of the next free block to point to bp's predecessor */
+    }
+    else {                                                  /* removing only free block */
+        free_listp = 0;
+    } 
+}
+
 /****************************** Checker Functions *******************************/
 /********************************************************************************/
 

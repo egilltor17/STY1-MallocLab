@@ -214,7 +214,7 @@ void *mm_malloc(size_t size)
         *(size_t *)p = size;
         return (void *)((char *)p + SIZE_T_SIZE);
     }*/
-    return bp;
+    return (void*)bp;
 }
 
 /*
@@ -256,15 +256,14 @@ static int LIFO_insert(char* bp) {
     }
     
     if(NEXT_FREE_BLKP(bp) != heap_epilogue) {
-        PUT(*(bp + WSIZE), (char*)*(size_t*)(bp));          /* Next's prev = prev */
-        
+        PUT(((char*)GET(bp + WSIZE)), GET(bp));     /* Next's prev = prev */
     }
-    PUT(*bp, (char*)*(size_t*)(bp + WSIZE));              /* Prev's next = next */
+    PUT(((char*)GET(bp) + WSIZE), GET(bp + WSIZE)); /* Prev's next = next */
     
-    char* fp = NEXT_FREE_BLKP(bp);              /* Pointer to new free-block */
-    PUT(fp, (size_t)free_listp);                /* fb's prev = NULL */
-    PUT((fp+ WSIZE), (size_t)free_listp);       /* fb's next = the start of the free list */   
-    free_listp = fp;                            /* the freelist starts with fb */
+    char* fp = NEXT_FREE_BLKP(bp);                  /* Pointer to new free-block */
+    PUT(fp, (size_t)NULL);                          /* fb's prev = NULL */
+    PUT((fp + WSIZE), (size_t)free_listp);          /* fb's next = the start of the free list */   
+    free_listp = fp;                                /* the freelist starts with fb */
     
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -290,7 +289,7 @@ static void *extend_heap(size_t words)
     PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* new epilogue header */
     heap_epilogue = NEXT_BLKP(bp);
-    LIFO_insert(bp);
+    // LIFO_insert(bp);
     /* Coalesce if the previous block was free */
     return coalesce(bp);
 }

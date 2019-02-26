@@ -226,9 +226,9 @@ void mm_free(void *bp)
 {
     /* If bp is nullptr or heap uninitilized */
     if(bp == 0 || heap_prologue == 0) { return; }
-
-    PUT(HDRP(bp), GET_SIZE(bp));    /* mark header as free */
-    PUT(FTRP(bp), GET_SIZE(bp));    /* maek footer as free */
+    size_t size = GET_SIZE(HDRP(bp));
+    PUT(HDRP(bp), PACK(size, 0));    /* mark header as free */
+    PUT(FTRP(bp), PACK(size, 0));    /* maek footer as free */
 
     coalesce(bp);
 }
@@ -304,7 +304,7 @@ static void *extend_heap(size_t words)
     char *bp;
     /* Allocate an even number of words to maintain alignment */
     size_t size = ((words+1) & -0x2) << 0x2;
-    // size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
+    // size_t size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
     // size = (words & -2) ? words << 2 : (words+1) << 2;
     if ((bp = mem_sbrk(size)) == (void *)-1) { return NULL; }
 

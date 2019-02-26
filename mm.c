@@ -171,7 +171,6 @@ int mm_init(void)
     free_listp = NEXT_BLKP(heap_prologue);
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE>>2) == NULL) {return -1; }
-
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
@@ -187,7 +186,9 @@ void *mm_malloc(size_t size)
 {
     int new_size = ALIGN(size) + SIZE_T_SIZE;    /* make the size a multiple of 8 */
     char* bp = free_listp;
-    while(bp != 0) {
+    printf("header %p freee list %p", bp, free_listp);
+    fflush(stdout);
+    while(NEXT_FREE_BLKP(bp) != 0) {
         if(!(GET_SIZE(HDRP(bp)) <= new_size)) {
             printf("size break\n");
             break;
@@ -205,6 +206,8 @@ void *mm_malloc(size_t size)
         LIFO_insert(bp);
     }
     else {
+        printf("paddding\n");
+         printf("size %d  hdrpbp %p\n", new_size,HDRP(bp));
         PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));      /* update free footer size */
         PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));      /* new free header */
         LIFO_remove(bp);
@@ -265,17 +268,20 @@ static int LIFO_insert(char* bp) {
         printf("get out\n");
         return 0;
     }
-
     if(bp != free_listp) {
         PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
     }
-    if(NEXT_FREE_BLKP(bp) != 0) {
+    else if(NEXT_FREE_BLKP(bp) != 0) {
         PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
         char* fp = NEXT_BLKP(bp);                       /* Pointer to new free-block */
         PUT(fp, (size_t)NULL);                          /* fb's prev = NULL */
         PUT((fp + WSIZE), (size_t)free_listp);          /* fb's next = the start of the free list */   
         free_listp = fp;                                /* the freelist starts with fb */
     }
+    else {
+        free_listp = bp;
+    }
+    printf("free %p bp %p fp %p\n",free_listp, bp, NEXT_BLKP(bp));
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
@@ -289,6 +295,10 @@ static int LIFO_remove(char* bp) {
     if(bp != free_listp) {
         PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
     }
+    else {
+        free_listp = NEXT_FREE_BLKP(free_listp);
+    }
+    
     if(NEXT_FREE_BLKP(bp) != 0) {
         PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
     }
@@ -314,6 +324,10 @@ static void *extend_heap(size_t words)
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   /* new epilogue header */
     heap_epilogue = NEXT_BLKP(bp);          /* update heap_epilogue pointer */
     PUT(bp + WSIZE, 0); /* make free block's next pointer point to null */
+    if(free_listp == 0)
+    {
+        free_listp = bp; 
+    }
     LIFO_insert(bp);    
     /* Coalesce if the previous block was free */
     return coalesce(bp);

@@ -98,7 +98,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Basic constants and macros */
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
-#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<5)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -167,15 +167,15 @@ int mm_init(void)
     PUT(heap_prologue+WSIZE+DSIZE, PACK(0, 1));     /* epilouge header */
     heap_prologue += DSIZE;
     heap_epilogue = NULL;
-    free_listp = NULL;
-    /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(CHUNKSIZE>>2) == NULL) { return -1; }
     free_listp = NEXT_BLKP(heap_prologue);
-    PUT(free_listp, 0);                                 /* pred pointer is null */
-    PUT((free_listp + WSIZE), (size_t)heap_epilogue);   /* succ pointer is epilogue */
+
+    /* Extend the empty heap with a free block of CHUNKSIZE bytes */
+    if (extend_heap(CHUNKSIZE>>2) == NULL) {return -1; }
+
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
+    
     return 0;
 }
 
@@ -193,11 +193,12 @@ void *mm_malloc(size_t size)
         }
         bp = NEXT_FREE_BLKP(bp);
     }
-    size_t free_size = GET_SIZE(HDRP(bp)) - new_size;
+    
+    size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
     PUT(FTRP(bp), PACK(free_size, 0));          /* update free footer size */
     PUT(HDRP(bp), PACK(new_size, 1));           /* new allocated header */  
     PUT(FTRP(bp), PACK(new_size, 1));           /* new allocated footer */
-    PUT(FTRP(bp) + WSIZE, PACK(free_size, 0));  /* new free header */
+    PUT(NEXT_BLKP(bp), PACK(free_size, 0));     /* new free header */
     
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -205,15 +206,6 @@ void *mm_malloc(size_t size)
     
     LIFO_insert(bp);
 
-    /*int new_size = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(new_size);
-    if (p == (void *)-1) {
-        return NULL;
-    }
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
-    }*/
     return (void*)bp;
 }
 
@@ -221,8 +213,15 @@ void *mm_malloc(size_t size)
  * mm_free - Freeing a block does nothing.
  * ToDo: we want to mark the area as free and update surrounding headers if necessary
  */
-void mm_free(void *ptr)
+void mm_free(void *bp)
 {
+    /* If bp is nullptr or heap uninitilized */
+    if(bp == 0 || heap_prologue == 0) { return; }
+
+    PUT(HDRP(bp), GET_SIZE(bp));    /* mark header as free */
+    PUT(FTRP(bp), GET_SIZE(bp));    /* maek footer as free */
+
+    coalesce(bp);
 }
 
 /*
@@ -254,17 +253,20 @@ static int LIFO_insert(char* bp) {
     if(bp == heap_epilogue) {
         return 0;
     }
-    
+
     if(NEXT_FREE_BLKP(bp) != heap_epilogue) {
-        PUT(((char*)GET(bp + WSIZE)), GET(bp));     /* Next's prev = prev */
+        PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
     }
-    PUT(((char*)GET(bp) + WSIZE), GET(bp + WSIZE)); /* Prev's next = next */
     
-    char* fp = NEXT_FREE_BLKP(bp);                  /* Pointer to new free-block */
+    if(bp != free_listp) {
+        PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
+    }
+
+    char* fp = NEXT_BLKP(bp);                       /* Pointer to new free-block */
     PUT(fp, (size_t)NULL);                          /* fb's prev = NULL */
     PUT((fp + WSIZE), (size_t)free_listp);          /* fb's next = the start of the free list */   
     free_listp = fp;                                /* the freelist starts with fb */
-    
+
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
@@ -279,17 +281,21 @@ static int LIFO_insert(char* bp) {
 static void *extend_heap(size_t words) 
 {
     char *bp;
-    size_t size;
     /* Allocate an even number of words to maintain alignment */
-    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
+    size_t size = ((words+1) & -0x2) << 0x2;
+    // size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
+    // size = (words & -2) ? words << 2 : (words+1) << 2;
     if ((bp = mem_sbrk(size)) == (void *)-1) { return NULL; }
 
     /* Initialize free block header/footer and the epilogue header */
-    PUT(HDRP(bp), PACK(size, 0));         /* free block header */
-    PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* new epilogue header */
-    heap_epilogue = NEXT_BLKP(bp);
-    // LIFO_insert(bp);
+    PUT(HDRP(bp), PACK(size, 0));           /* free block header */
+    PUT(FTRP(bp), PACK(size, 0));           /* free block footer */
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   /* new epilogue header */
+
+    heap_epilogue = NEXT_BLKP(bp);          /* update heap_epilogue pointer */
+    PUT(bp + WSIZE, (size_t)heap_epilogue); /* make free block's next pointer point to heap_epilogue */
+    LIFO_insert(bp);
+
     /* Coalesce if the previous block was free */
     return coalesce(bp);
 }
@@ -307,23 +313,34 @@ static void *coalesce(void *bp)
         return bp;
     }
     else if (prev_alloc && !next_alloc) {      /* Case 2: Next block is free */
+        // ToDo: remove next block from free list
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
+        // ToDo: add coalesed block free list
     }
     else if (!prev_alloc && next_alloc) {      /* Case 3: Previous block is free */
+        // ToDo: remove prev block from free list
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+        // ToDo: add coalesed block free list
     }
     else {                                     /* Case 4: Both blocks are free  */
+        // ToDo: remove next block from free list
+        // ToDo: remove prev block from free list
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
             GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+        // ToDo: add coalesed block free list
     }
+
+    #ifdef DEBUG
+    printf("%s\n", __func__); mm_check(1);
+    #endif
 
     return bp;
 }

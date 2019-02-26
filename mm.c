@@ -98,7 +98,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Basic constants and macros */
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
-#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<5)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -167,12 +167,11 @@ int mm_init(void)
     PUT(heap_prologue+WSIZE+DSIZE, PACK(0, 1));     /* epilouge header */
     heap_prologue += DSIZE;
     heap_epilogue = NULL;
-    free_listp = NULL;
-    /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(CHUNKSIZE>>2) == NULL) { return -1; }
     free_listp = NEXT_BLKP(heap_prologue);
-    PUT(free_listp, 0);                                 /* pred pointer is null */
-    PUT((free_listp + WSIZE), (size_t)heap_epilogue);   /* succ pointer is epilogue */
+    /* Extend the empty heap with a free block of CHUNKSIZE bytes */
+    if (extend_heap(CHUNKSIZE>>2) == NULL) {return -1; }
+    printf("hallo %p\n",free_listp + WSIZE);
+    fflush(stdout);
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
@@ -198,13 +197,11 @@ void *mm_malloc(size_t size)
     PUT(HDRP(bp), PACK(new_size, 1));           /* new allocated header */  
     PUT(FTRP(bp), PACK(new_size, 1));           /* new allocated footer */
     PUT(FTRP(bp) + WSIZE, PACK(free_size, 0));  /* new free header */
-    
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
-    
     LIFO_insert(bp);
-
+    mm_realloc(bp, 8);
     /*int new_size = ALIGN(size + SIZE_T_SIZE);
     void *p = mem_sbrk(new_size);
     if (p == (void *)-1) {
@@ -254,18 +251,33 @@ static int LIFO_insert(char* bp) {
     if(bp == heap_epilogue) {
         return 0;
     }
-    
     if(NEXT_FREE_BLKP(bp) != heap_epilogue) {
-        PUT(*(bp + WSIZE), (char*)*(size_t*)(bp));          /* Next's prev = prev */
-        
+        printf("pointers %p %p",bp, heap_epilogue);
+        fflush(stdout);
+        PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            //previous pointer of next free block point to prev block
     }
-    PUT(*bp, (char*)*(size_t*)(bp + WSIZE));              /* Prev's next = next */
-    
-    char* fp = NEXT_FREE_BLKP(bp);              /* Pointer to new free-block */
-    PUT(fp, (size_t)free_listp);                /* fb's prev = NULL */
-    PUT((fp+ WSIZE), (size_t)free_listp);       /* fb's next = the start of the free list */   
-    free_listp = fp;                            /* the freelist starts with fb */
-    
+    if(bp != free_listp) {
+        printf("pointers %p %p",bp, free_listp);
+        fflush(stdout);
+        PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    //next pointer of prev free block point to next block
+    }
+    PUT(NEXT_BLKP(bp) + WSIZE, (size_t)free_listp);         //next pointer on the new free block
+    free_listp = NEXT_BLKP(bp);
+   /* char *bn = bp + WSIZE;
+    char *fp = NEXT_BLKP(fp);
+    //char *fn = fp + WSIZE;
+    char *np = NEXT_FREE_BLKP(bp);
+    //har *nn = np + WSIZE;
+    char *pp = PREV_FREE_BLKP(bp);
+    char *pn = pp + WSIZE;
+    PUT(*pn, np);
+    if(NEXT_FREE_BLKP(bp) != heap_epilogue) {
+         PUT(*np , pp);
+    }
+    PUT(*bn, free_listp);
+    PUT(*free_listp + WSIZE, bp);
+    free_listp = bp;*/
+
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
@@ -290,6 +302,7 @@ static void *extend_heap(size_t words)
     PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* new epilogue header */
     heap_epilogue = NEXT_BLKP(bp);
+    PUT(bp + WSIZE, (size_t)heap_epilogue);
     LIFO_insert(bp);
     /* Coalesce if the previous block was free */
     return coalesce(bp);

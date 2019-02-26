@@ -170,7 +170,7 @@ int mm_init(void)
     free_listp = NEXT_BLKP(heap_prologue);
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(CHUNKSIZE>>2) == NULL) {return -1; }
+    if (extend_heap(CHUNKSIZE>>2) == NULL) { return -1; }
 
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -185,20 +185,44 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size)
 {
-    int new_size = ALIGN(size + SIZE_T_SIZE);    /* make the size a multiple of 8 */
-    char* bp = free_listp;
+    size_t new_size = ALIGN(size + SIZE_T_SIZE);    /* make the size a multiple of 8 */
+    size_t extendsize;                              /* amount to extend heap if no fit */
+    char *bp;      
+
+    if (size <= 0) { return NULL; }                 /* Invalid size */
+    
+    /* Search the free list for a fit */
+    if ((bp = find_fit(new_size)) != NULL) {
+        place(bp, new_size);
+        return bp;
+    }
+
+    /* No fit found. Get more memory and place the block */
+    extendsize = MAX(new_size, CHUNKSIZE);
+    if ((bp = extend_heap(extendsize >> 2)) == NULL) { return NULL; }
+    place(bp, new_size);
+
+    /*****************************************************************************/
+    
+    //size_t new_size = ALIGN(size + SIZE_T_SIZE);    /* make the size a multiple of 8 */
+    //char* bp = free_listp;
+
+    if(size <= 0) { return NULL; }                  /* Invalid size */
+
     while(bp != heap_epilogue) {
-        if(!(GET_SIZE(HDRP(free_listp)) <= new_size)) {
+        if(!(GET_SIZE(HDRP(bp)) <= new_size)) {
             break;
         }
         bp = NEXT_FREE_BLKP(bp);
     }
+
+    for(bp = free_listp; (int)bp | (new_size <= GET_SIZE(HDRP(bp))) ; bp = NEXT_FREE_BLKP(bp)) {}
     
     size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
-    PUT(FTRP(bp), PACK(free_size, 0));          /* update free footer size */
-    PUT(HDRP(bp), PACK(new_size, 1));           /* new allocated header */  
-    PUT(FTRP(bp), PACK(new_size, 1));           /* new allocated footer */
-    PUT(NEXT_BLKP(bp), PACK(free_size, 0));     /* new free header */
+    PUT(FTRP(bp), PACK(free_size, 0));                  /* update free footer size */
+    PUT(HDRP(bp), PACK(new_size, 1));                   /* new allocated header */  
+    PUT(FTRP(bp), PACK(new_size, 1));                   /* new allocated footer */
+    PUT(NEXT_BLKP(bp), PACK(free_size, 0));             /* new free header */
     
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);

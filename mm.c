@@ -98,7 +98,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Basic constants and macros */
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
-#define CHUNKSIZE  (1<<5)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<6)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -151,6 +151,7 @@ int checkIfOutOfBounds(char *bp);
 static void printblock(void *bp); 
 
 static int LIFO_insert(char* bp);
+static int LIFO_remove(char* bp);
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 /* 
@@ -168,7 +169,6 @@ int mm_init(void)
     heap_prologue += DSIZE;
     heap_epilogue = NULL;
     free_listp = NEXT_BLKP(heap_prologue);
-
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE>>2) == NULL) {return -1; }
 
@@ -185,25 +185,35 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size)
 {
-    int new_size = ALIGN(size + SIZE_T_SIZE);    /* make the size a multiple of 8 */
+    int new_size = ALIGN(size) + SIZE_T_SIZE;    /* make the size a multiple of 8 */
     char* bp = free_listp;
-    while(bp != heap_epilogue) {
-        if(!(GET_SIZE(HDRP(free_listp)) <= new_size)) {
+    while(bp != 0) {
+        if(!(GET_SIZE(HDRP(bp)) <= new_size)) {
+            printf("size break\n");
             break;
         }
+        printf("size break\n");
         bp = NEXT_FREE_BLKP(bp);
     }
+    if(new_size < GET_SIZE(HDRP(bp)) - 3*WSIZE ) {       //now we split
+       size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
+        printf("size %d newsize %d hdrpbp %p\n", free_size, new_size,HDRP(bp)); 
+        PUT(FTRP(bp), PACK(free_size, 0));          /* update free footer size */
+        PUT(HDRP(bp), PACK(new_size, 1));           /* new allocated header */  
+        PUT(FTRP(bp), PACK(new_size, 1));           /* new allocated footer */
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));     /* new free header */
+        LIFO_insert(bp);
+    }
+    else {
+        PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));      /* update free footer size */
+        PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));      /* new free header */
+        LIFO_remove(bp);
+    }
     
-    size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
-    PUT(FTRP(bp), PACK(free_size, 0));          /* update free footer size */
-    PUT(HDRP(bp), PACK(new_size, 1));           /* new allocated header */  
-    PUT(FTRP(bp), PACK(new_size, 1));           /* new allocated footer */
-    PUT(NEXT_BLKP(bp), PACK(free_size, 0));     /* new free header */
     
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
-    LIFO_insert(bp);
 
     return (void*)bp;
 }
@@ -249,27 +259,39 @@ void *mm_realloc(void *ptr, size_t size)
 /********************************************************************************/
 
 static int LIFO_insert(char* bp) {
-    if(bp == heap_epilogue) {
+    printf("bp %p\n", bp);
+    if(bp == 0) {
+        free_listp = bp;
+        printf("get out\n");
         return 0;
     }
 
-    if(NEXT_FREE_BLKP(bp) != heap_epilogue) {
-        PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
-    }
-    
     if(bp != free_listp) {
         PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
     }
-
-    char* fp = NEXT_BLKP(bp);                       /* Pointer to new free-block */
-    PUT(fp, (size_t)NULL);                          /* fb's prev = NULL */
-    PUT((fp + WSIZE), (size_t)free_listp);          /* fb's next = the start of the free list */   
-    free_listp = fp;                                /* the freelist starts with fb */
-
+    if(NEXT_FREE_BLKP(bp) != 0) {
+        PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
+        char* fp = NEXT_BLKP(bp);                       /* Pointer to new free-block */
+        PUT(fp, (size_t)NULL);                          /* fb's prev = NULL */
+        PUT((fp + WSIZE), (size_t)free_listp);          /* fb's next = the start of the free list */   
+        free_listp = fp;                                /* the freelist starts with fb */
+    }
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
 
+    return 1;
+}
+static int LIFO_remove(char* bp) {
+    if(bp == 0) {
+        return 0;
+    }
+    if(bp != free_listp) {
+        PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
+    }
+    if(NEXT_FREE_BLKP(bp) != 0) {
+        PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
+    }
     return 1;
 }
 
@@ -290,11 +312,9 @@ static void *extend_heap(size_t words)
     PUT(HDRP(bp), PACK(size, 0));           /* free block header */
     PUT(FTRP(bp), PACK(size, 0));           /* free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   /* new epilogue header */
-
     heap_epilogue = NEXT_BLKP(bp);          /* update heap_epilogue pointer */
-    PUT(bp + WSIZE, (size_t)heap_epilogue); /* make free block's next pointer point to heap_epilogue */
-    LIFO_insert(bp);
-
+    PUT(bp + WSIZE, 0); /* make free block's next pointer point to null */
+    LIFO_insert(bp);    
     /* Coalesce if the previous block was free */
     return coalesce(bp);
 }
@@ -378,7 +398,7 @@ int mm_check(int verbose)
     }
 
     /* Run through the free list */
-    for (char *f_list = free_listp; f_list != heap_epilogue; f_list = NEXT_FREE_BLKP(f_list)) { /* The second word in the "payload" is the pointer to the next free block */
+    for (char *f_list = free_listp; f_list != 0; f_list = NEXT_FREE_BLKP(f_list)) { /* The second word in the "payload" is the pointer to the next free block */
         
         if((int)f_list & 0x7) {             /* The pointer is not 8bit alinged */
             printf("Error: the free block %p is not 8bit allinged\n", (void*)f_list);

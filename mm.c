@@ -216,7 +216,7 @@ void *mm_malloc(size_t size)
         bp = NEXT_FREE_BLKP(bp);
     }
 
-    for(bp = free_listp; (int)bp | (new_size <= GET_SIZE(HDRP(bp))) ; bp = NEXT_FREE_BLKP(bp)) {}
+    for(bp = free_listp; (int)bp & (new_size <= GET_SIZE(HDRP(bp))) ; bp = NEXT_FREE_BLKP(bp)) {}
     
     size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
     PUT(FTRP(bp), PACK(free_size, 0));                  /* update free footer size */

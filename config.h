@@ -22,7 +22,6 @@
  * traces.
  */
 #define DEFAULT_TRACEFILES \
-  "test1.rep",\
   "amptjp-bal.rep",\
   "binary2-bal.rep",\
   "binary-bal.rep",\
@@ -32,8 +31,6 @@
   "expr-bal.rep",\
   "random2-bal.rep",\
   "random-bal.rep",\
-  /*"realloc2-bal.rep",\
-  "realloc-bal.rep",\*/
   "3coalescing-bal.rep"
 
 /*

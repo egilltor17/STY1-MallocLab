@@ -98,7 +98,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Basic constants and macros */
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
-#define CHUNKSIZE  (1<<11)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -199,6 +199,7 @@ void *mm_malloc(size_t size)
 
     /* run through the freelist until a sufficiently large block is found else bp = 0 */
     for(bp = free_listp; ((size_t)bp && (new_size > GET_SIZE(HDRP(bp)))); bp = NEXT_FREE_BLKP(bp)) {/* printf("%p\n", bp); */}
+    
 
     if(!bp) {                                           /* if there is no suitable free block we extend */
         if((bp = extend_heap(MAX(new_size, CHUNKSIZE) >> 2)) == NULL) { return NULL; }
@@ -259,20 +260,29 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *oldptr = ptr;
-    void *newptr;
+    char *oldptr = ptr;
+    char *newptr;
     size_t copySize;
+
+    if(size <= (GET_SIZE(HDRP(oldptr)) - SIZE_T_SIZE)) { return ptr; }   /* block is already big enough */
     
-    newptr = mm_malloc(size);
-    if (newptr == NULL) {
-        return NULL;
-    }
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    if((newptr = mm_malloc(size)) == NULL) { return NULL; }                 /* malloc failed */
+
+
+
+    copySize = *(size_t *)(oldptr - SIZE_T_SIZE);
     if (size < copySize) {
         copySize = size;
     }
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
+
+    #ifdef DEBUG
+    printf("%s\n", __func__); mm_check(1);
+    #endif
+
+
+
     return newptr;
 }
 

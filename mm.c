@@ -265,6 +265,7 @@ void mm_free(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0));    /* mark header as free */
     PUT(FTRP(bp), PACK(size, 0));    /* maek footer as free */
+    printf("free -x- coalesce\n");
 
     coalesce(bp);
 }
@@ -319,6 +320,7 @@ static int LIFO_insert(char* bp) {
     /*=================================================================================*/
 
     if(free_listp == 0) {                               /* the list is empty */
+        printf("insert1\n");
         // PUT(NEXT_FREE_BLKP(bp), 0);                     /* bp's next = 0 */
         // PUT(PREV_FREE_BLKP(bp), 0);                     /* bp's prev = 0 */
         PUT(bp + WSIZE, 0);                             /* bp's next = 0 */
@@ -326,9 +328,11 @@ static int LIFO_insert(char* bp) {
         free_listp = bp;                                /* the freelist starts with fb */
     } 
     else {
-        PUT(PREV_FREE_BLKP(free_listp), (size_t)bp);    /* current list's head's prev = bp */
-        PUT(PREV_FREE_BLKP(bp), 0);                     /* bp's prev = 0 */
-        PUT(NEXT_FREE_BLKP(bp), (size_t)free_listp);    /* bp's next = the start of the free list */
+        printf("insert2\n");
+        PUT(free_listp, (size_t)bp);    /* current list's head's prev = bp */
+        PUT(bp, 0);                     /* bp's prev = 0 */
+        PUT(bp + WSIZE, (size_t)free_listp);    /* bp's next = the start of the free list */
+        printf("insert3\n");
         free_listp = bp;                                /* the freelist starts with fb */
     }
 
@@ -413,13 +417,18 @@ static void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    printf("coalesce\n");
     size_t size = GET_SIZE(HDRP(bp));
+    printf("coalesce10\n");
 
     if (prev_alloc && next_alloc) {             /* Case 1: Both blocks are allocated, no coalessing reqired */
+        printf("coalesce1\n");
         LIFO_insert(bp);                        /* add block to the free list */
+        printf("coalesce1.1\n");
         return bp;
     }
     else if (prev_alloc && !next_alloc) {       /* Case 2: Next block is free */
+        printf("coalesce2\n");
         LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
@@ -427,6 +436,7 @@ static void *coalesce(void *bp)
         LIFO_insert(bp);                        /* add coalesed block to the free list */
     }
     else if (!prev_alloc && next_alloc) {       /* Case 3: Previous block is free */
+        printf("coalesce3\n");
         LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
@@ -435,6 +445,7 @@ static void *coalesce(void *bp)
         LIFO_insert(bp);                        /* add coalesed block to the free list */
     }
     else {                                      /* Case 4: Both blocks are free  */
+        printf("coalesce4\n");
         LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
@@ -444,6 +455,7 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
         LIFO_insert(bp);                        /* add coalesed block to the free list */
     }
+    printf("coalesce11\n");
 
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);

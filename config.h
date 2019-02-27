@@ -12,7 +12,7 @@
  * This is the default path where the driver will look for the
  * default tracefiles. You can override it at runtime with the -t flag.
  */
-#define TRACEDIR "/labs/sty19/data/traces/"
+#define TRACEDIR "./traces/"
 
 /*
  * This is the list of default tracefiles in TRACEDIR that the driver
@@ -22,6 +22,7 @@
  * traces.
  */
 #define DEFAULT_TRACEFILES \
+  "test1.rep",\
   "amptjp-bal.rep",\
   "binary2-bal.rep",\
   "binary-bal.rep",\
@@ -31,8 +32,8 @@
   "expr-bal.rep",\
   "random2-bal.rep",\
   "random-bal.rep",\
-  "realloc2-bal.rep",\
-  "realloc-bal.rep",\
+  /*"realloc2-bal.rep",\
+  "realloc-bal.rep",\*/
   "3coalescing-bal.rep"
 
 /*

@@ -207,48 +207,29 @@ void *mm_malloc(size_t size)
     /* run through the freelist until a sufficiently large block is found else bp = 0 */
     for(bp = free_listp; ((size_t)bp && (new_size <= GET_SIZE(HDRP(bp)))); bp = NEXT_FREE_BLKP(bp)) {printf("%p\n", bp);}
     
-    if(bp) {                                        /* fit found, place the block */
-        //if(new_size <= GET_SIZE(HDRP(bp)) - (WSIZE << 2)) { /* we split */
-        if((GET_SIZE(HDRP(bp)) - new_size) >= (DSIZE + OVERHEAD)) {
-            //printf("split1\n");
-            LIFO_remove(bp);
-            size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
-            PUT(FTRP(bp), PACK(free_size, 0));                  /* update free footer size */
-            PUT(HDRP(bp), PACK(new_size, 1));                   /* update free haader with allocated header */  
-            PUT(FTRP(bp), PACK(new_size, 1));                   /* new allocated footer */
-            PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));       /* new free header */
-            LIFO_insert(NEXT_BLKP(bp));
-        }
-        else {                                              /* we pad */
-            //printf("padd1\n");
-            LIFO_remove(bp);
-            PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));         /* update the header allocation */
-            PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));         /* update the footer allocation */
-        }
-    }
-    else {                                          /* no fit found, extend and place the block */
+    if(!bp) {    
         extendsize = MAX(new_size, CHUNKSIZE);
         printf("extendo patronumuuh  by %d\n", extendsize);
         fflush(stdout);
-        if((bp = extend_heap(extendsize >> 2)) == NULL) { return NULL; }
-        
-        //if(new_size <= GET_SIZE(HDRP(bp)) - (WSIZE << 2)) { /* we split */
-        if((GET_SIZE(HDRP(bp)) - new_size) >= (DSIZE + OVERHEAD)) {
-            printf("split2\n");
-            LIFO_remove(bp);
-            size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
-            PUT(FTRP(bp), PACK(free_size, 0));                  /* update free footer size */
-            PUT(HDRP(bp), PACK(new_size, 1));                   /* update free haader with allocated header */
-            PUT(FTRP(bp), PACK(new_size, 1));                   /* new allocated footer */
-            PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));       /* new free header */
-            LIFO_insert(NEXT_BLKP(bp));
-        }
-        else {                                              /* we pad */
-            printf("padd2\n");
-            LIFO_remove(bp);
-            PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));         /* update the header allocation */
-            PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));         /* update the footer allocation */
-        }
+        if((bp = extend_heap(extendsize >> 2)) == NULL) {
+            return NULL;
+        }                                    /* fit found, place the block */
+    }   //if(new_size <= GET_SIZE(HDRP(bp)) - (WSIZE << 2)) { /* we split */
+    if((GET_SIZE(HDRP(bp)) - new_size) >= (DSIZE + OVERHEAD)) {
+        //printf("split1\n");
+        LIFO_remove(bp);
+        size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
+        PUT(FTRP(bp), PACK(free_size, 0));                  /* update free footer size */
+        PUT(HDRP(bp), PACK(new_size, 1));                   /* update free haader with allocated header */  
+        PUT(FTRP(bp), PACK(new_size, 1));                   /* new allocated footer */
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));       /* new free header */
+        LIFO_insert(NEXT_BLKP(bp));
+    }
+    else {                                              /* we pad */
+        //printf("padd1\n");
+        LIFO_remove(bp);
+        PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));         /* update the header allocation */
+        PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));         /* update the footer allocation */
     }
     
     #ifdef DEBUG

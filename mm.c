@@ -134,7 +134,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
     #endif
  */
 
-#define DEBUG
+// #define DEBUG
 
 /* Global variables */
 static char *heap_prologue;  /* pointer to the start of heap */
@@ -167,14 +167,14 @@ int mm_init(void)
     PUT(heap_prologue+DSIZE, PACK(OVERHEAD, 1));    /* prolouge footer */
     PUT(heap_prologue+WSIZE+DSIZE, PACK(0, 1));     /* epilouge header */
     heap_prologue += DSIZE;
-    heap_epilogue = 0;
+    heap_epilogue = heap_prologue + WSIZE;
     free_listp = 0;
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE >> 2) == NULL) { return -1; }
 
     #ifdef DEBUG
-    printf("%s\n", __func__); mm_check(0);
+    printf("%s\n", __func__); mm_check(1);
     #endif
     
     return 0;
@@ -207,8 +207,8 @@ void *mm_malloc(size_t size)
     /* run through the freelist until a sufficiently large block is found else bp = 0 */
     for(bp = free_listp; ((size_t)bp & (new_size <= GET_SIZE(HDRP(bp)))); bp = NEXT_FREE_BLKP(bp)) {}
     
-    if(bp) {                                        /* fit found, place the block */
-        if(new_size <= GET_SIZE(HDRP(bp)) - (WSIZE << 2)) { /* we split */
+    if(bp) {                                                /* fit found, place the block */
+        if(new_size <= (GET_SIZE(HDRP(bp)) - (WSIZE << 2))) { /* we split */
             printf("split1\n");
             LIFO_remove(bp);
             size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
@@ -218,18 +218,18 @@ void *mm_malloc(size_t size)
             PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));       /* new free header */
             LIFO_insert(NEXT_BLKP(bp));
         }
-        else {                                              /* we pad */
+        else {                                                /* we pad */
             printf("padd1\n");
             LIFO_remove(bp);
             PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));         /* update the header allocation */
             PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));         /* update the footer allocation */
         }
     }
-    else {                                          /* no fit found, extend and place the block */
-        extendsize = MAX(new_size, CHUNKSIZE);
+    else {                                                  /* no fit found, extend and place the block */
+        extendsize = MAX(new_size, CHUNKSIZE);              /* extends with new_size if it is bigger than our CHUNKSIZE */
         if((bp = extend_heap(extendsize >> 2)) == NULL) { return NULL; }
         
-        if(new_size <= GET_SIZE(HDRP(bp)) - (WSIZE << 2)) { /* we split */
+        if(new_size <= (GET_SIZE(HDRP(bp)) - (WSIZE << 2))) { /* we split */
             printf("split2\n");
             LIFO_remove(bp);
             size_t free_size = GET_SIZE(HDRP(bp)) - new_size;   /* remaining free block size */
@@ -239,7 +239,7 @@ void *mm_malloc(size_t size)
             PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));       /* new free header */
             LIFO_insert(NEXT_BLKP(bp));
         }
-        else {                                              /* we pad */
+        else {                                                /* we pad */
             printf("padd2\n");
             LIFO_remove(bp);
             PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));         /* update the header allocation */
@@ -267,6 +267,11 @@ void mm_free(void *bp)
     PUT(FTRP(bp), PACK(size, 0));    /* maek footer as free */
 
     coalesce(bp);
+
+    #ifdef DEBUG
+    printf("%s\n", __func__); mm_check(1);
+    #endif
+
 }
 
 /*
@@ -295,85 +300,38 @@ void *mm_realloc(void *ptr, size_t size)
 /********************************************************************************/
 
 static int LIFO_insert(char* bp) {
-    // printf("bp %p\n", bp);
-    // if(bp == 0) {
-    //     free_listp = bp;
-    //     printf("get out\n");
-    //     return 0;
-    // }
-    // if(bp != free_listp) {
-    //     PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
-    // }
-    // else if(NEXT_FREE_BLKP(bp) != 0) {
-    //     PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
-    //     char* fp = NEXT_BLKP(bp);                       /* Pointer to new free-block */
-    //     PUT(fp, (size_t)NULL);                          /* fb's prev = NULL */
-    //     PUT((fp + WSIZE), (size_t)free_listp);          /* fb's next = the start of the free list */   
-    //     free_listp = fp;                                /* the freelist starts with fb */
-    // }
-    // else {
-    //     free_listp = bp;
-    // }
-    // printf("free %p bp %p fp %p\n",free_listp, bp, NEXT_BLKP(bp));
-
-    /*=================================================================================*/
-
-    if(free_listp == 0) {                               /* the list is empty */
-        // PUT(NEXT_FREE_BLKP(bp), 0);                     /* bp's next = 0 */
-        // PUT(PREV_FREE_BLKP(bp), 0);                     /* bp's prev = 0 */
-        PUT(bp + WSIZE, 0);                             /* bp's next = 0 */
-        PUT(bp, 0);                                     /* bp's prev = 0 */
-        free_listp = bp;                                /* the freelist starts with fb */
+    if(free_listp == 0) {                       /* the list is empty */
+        PUT(bp + WSIZE, 0);                     /* bp's next = 0 */
+        PUT(bp, 0);                             /* bp's prev = 0 */
+        free_listp = bp;                        /* the freelist starts with fb */
     } 
     else {
-        PUT(PREV_FREE_BLKP(free_listp), (size_t)bp);    /* current list's head's prev = bp */
-        PUT(PREV_FREE_BLKP(bp), 0);                     /* bp's prev = 0 */
-        PUT(NEXT_FREE_BLKP(bp), (size_t)free_listp);    /* bp's next = the start of the free list */
-        free_listp = bp;                                /* the freelist starts with fb */
+        PUT(free_listp, (size_t)bp);            /* current list's head's prev = bp */
+        PUT(bp, 0);                             /* bp's prev = 0 */
+        PUT(bp + WSIZE, (size_t)free_listp);    /* bp's next = the start of the free list */
+        free_listp = bp;                        /* the freelist starts with fb */
     }
-
-
-    #ifdef DEBUG
-    printf("%s\n", __func__); mm_check(0);
-    #endif
-
     return 1;
 }
+
 static int LIFO_remove(char* bp) {
-    /* if(bp == 0) {
-        return 0;
-    } */
-
-    // if(PREV_FREE_BLKP(bp) != 0 /* bp != free_listp */) {
-    //     PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
-    // }
-    // else {
-    //     free_listp = NEXT_FREE_BLKP(free_listp);
-    // }
-    
-    // if(NEXT_FREE_BLKP(bp) != 0) {
-    //     PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
-    // }
-
-    /*=========================================================================*/
-
-    if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) == 0) {   /* bp is the only free block */
+    if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) == 0) {       /* bp is the only free block */
         free_listp = 0;
     } 
-    else if (NEXT_FREE_BLKP(bp) != 0 && PREV_FREE_BLKP(bp) == 0) {                         /* if next exists then bp is the start of the list */
+    else if (NEXT_FREE_BLKP(bp) != 0 && PREV_FREE_BLKP(bp) == 0) {  /* if next exists then bp is the start of the list */
         free_listp = NEXT_FREE_BLKP(bp);                                /* Next is now the start of the list */
         PUT(NEXT_FREE_BLKP(bp), 0);                                     /* Next's prev = 0 */
     } 
-    else if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) != 0) {                         /* if prev exists then pb is end of the list */
+    else if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) != 0) {  /* if prev exists then pb is end of the list */
         PUT(PREV_FREE_BLKP(bp) + WSIZE, 0);                             /* Prev's next = 0 */
     }
-    else {                                                      /* else bp is in the middle of the list */
+    else {                                                          /* else bp is in the middle of the list */
         PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
         PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
     }
 
     #ifdef DEBUG
-    printf("%s\n", __func__); mm_check(0);
+    printf("%s\n", __func__); mm_check(1);
     #endif
 
     return 1;

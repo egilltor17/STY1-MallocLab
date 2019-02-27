@@ -31,6 +31,8 @@
   "expr-bal.rep",\
   "random2-bal.rep",\
   "random-bal.rep",\
+  "realloc2-bal.rep",\
+  "realloc-bal.rep",\
   "3coalescing-bal.rep"
 
 /*

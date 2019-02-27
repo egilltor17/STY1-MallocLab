@@ -134,7 +134,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
     #endif
  */
 
-// #define DEBUG
+#define debug
 
 /* Global variables */
 static char *heap_prologue;  /* pointer to the start of heap */
@@ -356,8 +356,6 @@ static void *extend_heap(size_t words)
     PUT(FTRP(bp), PACK(size, 0));           /* free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   /* new epilogue header */
     heap_epilogue = NEXT_BLKP(bp);          /* update heap_epilogue pointer */
-    // PUT(bp + WSIZE, 0); /* make free block's next pointer point to null */
-    // LIFO_insert(bp);    
     
     return coalesce(bp);                    /* Coalesce if the previous block was free */
 }
@@ -372,15 +370,18 @@ static void *coalesce(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
 
     if (prev_alloc && next_alloc) {             /* Case 1: Both blocks are allocated, no coalessing reqired */
+        printf("case1\n");
         //do nothing
     }
     else if (prev_alloc && !next_alloc) {       /* Case 2: Next block is free */
+        printf("case2\n");
         LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     }
     else if (!prev_alloc && next_alloc) {       /* Case 3: Previous block is free */
+        printf("case3\n");
         LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
@@ -388,6 +389,7 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
     else {                                      /* Case 4: Both blocks are free  */
+        printf("case4\n");
         LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 

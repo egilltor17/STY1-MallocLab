@@ -135,7 +135,7 @@ team_t team = {
 static char *heap_prologue;  /* pointer to the start of heap */
 static char *heap_epilogue;  /* pointer to the end of heap */
 static char *free_listp;     /* pointer to the start of free list */
-// static char *skip_listp;     /* pointer to the start of skip list */
+static char *skip_listp;     /* pointer to the start of skip list */
 
 /* function prototypes for internal helper routines */
 static void LIFO_insert(char* bp);
@@ -220,7 +220,8 @@ void *mm_malloc(size_t size)
 void mm_free(void *bp)
 {
     /* If bp is nullptr or heap uninitilized */
-    if(bp == 0 || heap_prologue == 0) { return; }
+    if(bp == 0) { return; }
+    // if(bp == 0 || heap_prologue == 0) { return; }
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0));    /* mark header as free */
     PUT(FTRP(bp), PACK(size, 0));    /* maek footer as free */
@@ -249,7 +250,7 @@ void *mm_realloc(void *ptr, size_t size)
         return NULL;
     }
     else if(new_size <= (GET_SIZE(HDRP(ptr)) - (DSIZE + OVERHEAD))) { /* the size shrinks */
-        return coalesce(NEXT_BLKP(place(ptr, GET_SIZE(HDRP(ptr)), new_size)));
+        return NEXT_BLKP(place(ptr, GET_SIZE(HDRP(ptr)), new_size));
     }
     else if(new_size <= GET_SIZE(HDRP(ptr))) {      /* the block is big enugh no resize needed */
         return ptr;
@@ -301,22 +302,37 @@ static void LIFO_insert(char* bp) {
         PUT(bp + WSIZE, (size_t)free_listp);    /* bp's next = the start of the free list */
         free_listp = bp;                        /* the freelist starts with fb */
     }
+
+
+    // if(free_listp == (void*)NULL) {             /* the list is empty */
+    //     PUT(bp + WSIZE, 0);                     /* bp's next = 0 */
+    //     PUT(bp, 0);                             /* bp's prev = 0 */
+    //     free_listp = bp;                        /* the freelist starts with fb */
+    // } 
+    // else {
+    //     PUT(free_listp, (size_t)bp);            /* current list's head's prev = bp */
+    //     PUT(bp, 0);                             /* bp's prev = 0 */
+    //     PUT(bp + WSIZE, (size_t)free_listp);    /* bp's next = the start of the free list */
+    //     free_listp = bp;                        /* the freelist starts with fb */
+    // }
 }
 
 static void LIFO_remove(char* bp) {
-    if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) == 0) {       /* bp is the only free block */
+    char* next = NEXT_FREE_BLKP(bp);
+    char* prev = PREV_FREE_BLKP(bp);
+    if (!next & !prev) {            /* bp is the only free block */
         free_listp = 0;
     } 
-    else if (NEXT_FREE_BLKP(bp) != 0 && PREV_FREE_BLKP(bp) == 0) {  /* if next exists then bp is the start of the list */
-        free_listp = NEXT_FREE_BLKP(bp);                                /* Next is now the start of the list */
-        PUT(NEXT_FREE_BLKP(bp), 0);                                     /* Next's prev = 0 */
+    else if (!prev) {               /* if next exists then bp is the start of the list */
+        free_listp = next;                  /* Next is now the start of the list */
+        PUT(next, 0);                       /* Next's prev = 0 */
     } 
-    else if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) != 0) {  /* if prev exists then pb is end of the list */
-        PUT(PREV_FREE_BLKP(bp) + WSIZE, 0);                             /* Prev's next = 0 */
+    else if (!next) {               /* if prev exists then pb is end of the list */
+        PUT(prev + WSIZE, 0);               /* Prev's next = 0 */
     }
-    else {                                                          /* else bp is in the middle of the list */
-        PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
-        PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
+    else {                          /* else bp is in the middle of the list */
+        PUT(prev + WSIZE, (size_t)next);    /* Prev's next = next */ 
+        PUT(next, (size_t)prev);            /* Next's prev = prev */
     }
 }
 
@@ -349,13 +365,13 @@ static void *coalesce(void* bp)
     if (prev_alloc && next_alloc) {             /* Case 1: Both blocks are allocated, no coalessing reqired */
         //do nothing
     }
-    else if (prev_alloc && !next_alloc) {       /* Case 2: Next block is free */
+    else if (prev_alloc) {       /* Case 2: Next block is free */
         LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     }
-    else if (!prev_alloc && next_alloc) {       /* Case 3: Previous block is free */
+    else if (next_alloc) {       /* Case 3: Previous block is free */
         LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
@@ -493,7 +509,7 @@ static int checkIfTwoContinuousFreeBlocks(char *bp)
 static int checkIfOutOfBounds(char *bp) 
 {
     if(heap_epilogue < NEXT_BLKP(bp)) { /* The pointers in the free block point out of bounds */
-        printf("Error: the block %p is out of bounds: heap_epilogue:%p < NEXT_BLKP(bp):%p\n", bp, heap_epilogue, NEXT_BLKP(bp));
+        printf("Error: the block %p is out of bounds: heap_epilogue < NEXT_BLKP(bp)\n", bp);
         return 0;
     }
     if(PREV_BLKP(bp) < heap_prologue) { /* The pointers in the free block point out of bounds */

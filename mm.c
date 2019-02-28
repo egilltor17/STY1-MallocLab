@@ -135,12 +135,14 @@ team_t team = {
 static char *heap_prologue;  /* pointer to the start of heap */
 static char *heap_epilogue;  /* pointer to the end of heap */
 static char *free_listp;     /* pointer to the start of free list */
-static char *skip_listp;     /* pointer to the start of skip list */
+// static char *skip_listp;     /* pointer to the start of skip list */
 
 /* function prototypes for internal helper routines */
 static void LIFO_insert(char* bp);
 static void LIFO_remove(char* bp);
 static void *coalesce(void *bp);
+static void* place(void* bp, size_t block_size, size_t new_size);
+
 int mm_check(int verbose);
 static int checkFreeBlockIsInFreeList(char *bp);
 static int checkValidBlock(char *bp);
@@ -179,9 +181,8 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size)
 {   
+    char* bp;
     size_t new_size = ALIGN(size) + SIZE_T_SIZE;    /* make the size a multiple of 8 */
-    size_t free_size;                               /* remaining free block size */
-    char* bp = free_listp;
     
     if (size <= 0) { return NULL; }                 /* Invalid size */
 
@@ -202,20 +203,8 @@ void *mm_malloc(size_t size)
         bp = coalesce(bp);                      /* Coalesce if the previous block was free */
     }
 
-    free_size = GET_SIZE(HDRP(bp)) - new_size;          /* remaining free block size */
-    if(free_size >= (DSIZE + OVERHEAD)) {               /* the block is big enugh to be split */
-        LIFO_remove(bp);
-        PUT(FTRP(bp), PACK(free_size, 0));              /* update free footer size */
-        PUT(HDRP(bp), PACK(new_size, 1));               /* update free haader with allocated header */  
-        PUT(FTRP(bp), PACK(new_size, 1));               /* new allocated footer */
-        PUT(HDRP(NEXT_BLKP(bp)), PACK(free_size, 0));   /* new free header */
-        LIFO_insert(NEXT_BLKP(bp));
-    }
-    else {                                              /* we pad */
-        LIFO_remove(bp);
-        PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));     /* update the header allocation */
-        PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));     /* update the footer allocation */
-    }
+    LIFO_remove(bp);
+    place(bp, GET_SIZE(HDRP(bp)), new_size);
 
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -248,10 +237,9 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    char* newptr;
     char* nextptr;
     char* prevptr;
-    size_t total_size;
+    size_t block_size;
     size_t new_size = ALIGN(size) + SIZE_T_SIZE;    /* make the size a multiple of 8 */
     if(ptr == NULL) {                               /* pointer is invalid, malloc new block*/
         return mm_malloc(size);
@@ -260,91 +248,49 @@ void *mm_realloc(void *ptr, size_t size)
         mm_free(ptr);
         return NULL;
     }
-    /* the size shrinks */
-    else if(new_size <= (GET_SIZE(HDRP(ptr)) - (DSIZE + OVERHEAD))) {
-        PUT(FTRP(ptr), PACK(GET_SIZE(HDRP(ptr)), 0));               /* update free footer size */
-        PUT(HDRP(ptr), PACK(new_size, 1));                          /* update free header with allocated header */  
-        PUT(FTRP(ptr), PACK(new_size, 1));                          /* new allocated footer */
-        PUT(HDRP(NEXT_BLKP(ptr)), PACK(GET_SIZE(HDRP(ptr)), 0));    /* new free header */
-        LIFO_insert(NEXT_BLKP(ptr));
-        coalesce(NEXT_BLKP(ptr));
-        return ptr;
+    else if(new_size <= (GET_SIZE(HDRP(ptr)) - (DSIZE + OVERHEAD))) { /* the size shrinks */
+        return coalesce(NEXT_BLKP(place(ptr, GET_SIZE(HDRP(ptr)), new_size)));
     }
     else if(new_size <= GET_SIZE(HDRP(ptr))) {      /* the block is big enugh no resize needed */
         return ptr;
     }
     
-    /* both the next and prev block is free, expand the alocation */
-    else if(!GET_ALLOC(HDRP(nextptr = NEXT_BLKP(ptr))) && !GET_ALLOC(HDRP(prevptr = PREV_BLKP(ptr))) && (new_size <= (total_size = GET_SIZE(HDRP(nextptr)) + GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prevptr)) ))) {
+    /* both the next and prev block is free, expand the alocation, move the payload and return */
+    else if(!GET_ALLOC(HDRP(nextptr = NEXT_BLKP(ptr))) && !GET_ALLOC(HDRP(prevptr = PREV_BLKP(ptr))) 
+            && (new_size <= (block_size = GET_SIZE(HDRP(nextptr)) + GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prevptr)) ))) {
         LIFO_remove(nextptr);
         LIFO_remove(prevptr);
         memcpy(prevptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
-        if(total_size - new_size >= (DSIZE + OVERHEAD)) {
-            PUT(HDRP(prevptr), PACK(new_size, 1));                      /* update free haader with allocated header */  
-            PUT(FTRP(prevptr), PACK(new_size, 1));                      /* new allocated footer */
-            ptr = NEXT_BLKP(prevptr);
-            PUT(HDRP(ptr), PACK((total_size - new_size), 0));    /* new free header */
-            PUT(FTRP(ptr), PACK((total_size - new_size), 0));    /* update free footer size */
-            LIFO_insert(ptr);
-        }
-        else {
-            PUT(HDRP(prevptr), PACK(total_size, 1));    /* update the header allocation */
-            PUT(FTRP(prevptr), PACK(total_size, 1));    /* update the footer allocation */
-        }
-        return prevptr;
+        return place(prevptr, block_size, new_size);
     }
-    
-    /* the next block is free, expand the alocation */
-    else if((!GET_ALLOC(HDRP(newptr = NEXT_BLKP(ptr)))) && (new_size <= (total_size = GET_SIZE(HDRP(newptr)) + GET_SIZE(HDRP(ptr))))) {
-        LIFO_remove(newptr);
-        if(total_size - new_size >= (DSIZE + OVERHEAD)) {
-            PUT(HDRP(ptr), PACK(new_size, 1));                      /* update free haader with allocated header */  
-            PUT(FTRP(ptr), PACK(new_size, 1));                      /* new allocated footer */
-            newptr = NEXT_BLKP(ptr);
-            PUT(HDRP(newptr), PACK((total_size - new_size), 0));    /* new free header */
-            PUT(FTRP(newptr), PACK((total_size - new_size), 0));    /* update free footer size */
-            LIFO_insert(newptr);
-        }
-        else {
-            PUT(HDRP(ptr), PACK(total_size, 1));    /* update the header allocation */
-            PUT(FTRP(ptr), PACK(total_size, 1));    /* update the footer allocation */
-        }
-        return ptr;
+    /* the next block is free, expand the alocation and return */
+    else if((!GET_ALLOC(HDRP(nextptr = NEXT_BLKP(ptr)))) && (new_size <= (block_size = GET_SIZE(HDRP(nextptr)) + GET_SIZE(HDRP(ptr))))) {
+        LIFO_remove(nextptr);
+        return place(ptr, block_size, new_size);
     }
-    /* the prev block is free, expand the alocation */
-    else if((!GET_ALLOC(HDRP(newptr = PREV_BLKP(ptr)))) && (new_size <= (total_size = GET_SIZE(HDRP(newptr)) + GET_SIZE(HDRP(ptr))))) {
-        LIFO_remove(newptr);
-        memcpy(newptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
-        if(total_size - new_size >= (DSIZE + OVERHEAD)) {
-            PUT(HDRP(newptr), PACK(new_size, 1));                      /* update free haader with allocated header */  
-            PUT(FTRP(newptr), PACK(new_size, 1));                      /* new allocated footer */
-            ptr = NEXT_BLKP(newptr);
-            PUT(HDRP(ptr), PACK((total_size - new_size), 0));    /* new free header */
-            PUT(FTRP(ptr), PACK((total_size - new_size), 0));    /* update free footer size */
-            LIFO_insert(ptr);
-        }
-        else {
-            PUT(HDRP(newptr), PACK(total_size, 1));    /* update the header allocation */
-            PUT(FTRP(newptr), PACK(total_size, 1));    /* update the footer allocation */
-        }
-        return newptr;
+    /* the prev block is free, expand the alocation, move the payload and return */
+    else if((!GET_ALLOC(HDRP(prevptr = PREV_BLKP(ptr)))) && (new_size <= (block_size = GET_SIZE(HDRP(prevptr)) + GET_SIZE(HDRP(ptr))))) {
+        LIFO_remove(prevptr);
+        memcpy(prevptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
+        return place(prevptr, block_size, new_size);
     }
     
     else {                                          /* the block needs to be reallocated */
-        if ((newptr = mm_malloc(size)) == NULL) {
+        block_size = GET_SIZE(HDRP(ptr)) - WSIZE;
+        if ((nextptr = mm_malloc(size)) == NULL) {
             printf("ERROR: mm_malloc failed in mm_realloc\n");
             exit(1);
         }
-        memcpy(newptr, ptr, ((size < (GET_SIZE(HDRP(ptr))) - WSIZE) ? size : (GET_SIZE(HDRP(ptr)) - WSIZE)));
+        memcpy(nextptr, ptr, (size < block_size ? size : block_size));
         mm_free(ptr);
-        return newptr;   
+        return nextptr;   
     }
 }
 
 /****************************** Helper Functions ********************************/
 /********************************************************************************/
 static void LIFO_insert(char* bp) {
-    if(free_listp == (void*)NULL) {                       /* the list is empty */
+    if(free_listp == (void*)NULL) {             /* the list is empty */
         PUT(bp + WSIZE, 0);                     /* bp's next = 0 */
         PUT(bp, 0);                             /* bp's prev = 0 */
         free_listp = bp;                        /* the freelist starts with fb */
@@ -369,15 +315,27 @@ static void LIFO_remove(char* bp) {
         PUT(PREV_FREE_BLKP(bp) + WSIZE, 0);                             /* Prev's next = 0 */
     }
     else {                                                          /* else bp is in the middle of the list */
-        //printf("bp %p", bp);
         PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
         PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
     }
 }
 
-// static void place(void* bp) {
-
-// }
+static void* place(void* bp, size_t block_size, size_t new_size) {
+    size_t free_size = block_size - new_size;   /* remaining free block size */
+    if(free_size >= (DSIZE + OVERHEAD)) {    /* the block is big enough to be split */
+        PUT(HDRP(bp), PACK(new_size, 1));       /* update free haader with allocated header */  
+        PUT(FTRP(bp), PACK(new_size, 1));       /* new allocated footer */
+        void* fp = NEXT_BLKP(bp);
+        PUT(HDRP(fp), PACK(free_size, 0));      /* new free header */
+        PUT(FTRP(fp), PACK(free_size, 0));      /* update free footer size */
+        LIFO_insert(fp);
+    }
+    else {                                   /* the block is not big enough to be split, we pad */
+        PUT(HDRP(bp), PACK(block_size, 1));    /* update the header allocation */
+        PUT(FTRP(bp), PACK(block_size, 1));    /* update the footer allocation */
+    }
+    return bp;
+}
 
 /*
  * coalesce - boundary tag coalescing. Return ptr to coalesced block

@@ -80,7 +80,7 @@ team_t team = {
 /* Basic constants and macros */
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
-#define CHUNKSIZE  (1<<10)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 #define MINBLOCK    16      /* minimum size of a free block (bytes) */
 #define ALIGNMENT   8       /* single word (4) or double word (8) alignment */
@@ -138,17 +138,18 @@ static char *free_listp;     /* pointer to the start of free list */
 static char *skip_listp;     /* pointer to the start of skip list */
 
 /* function prototypes for internal helper routines */
-static void LIFO_insert(char* bp);
-static void LIFO_remove(char* bp);
-static void *coalesce(void *bp);
 int mm_check(int verbose);
-static int checkFreeBlockIsInFreeList(char *bp);
-static int checkValidBlock(char *bp);
-static int checkBlockOverlap(char *bp);
-static int checkIfTwoContinuousFreeBlocks(char *bp);
-static int checkIfOutOfBounds(char *bp);
+int checkFreeBlockIsInFreeList(char *bp);
+int checkValidBlock(char *bp);
+int checkBlockOverlap(char *bp);
+int checkIfTwoContinuousFreeBlocks(char *bp);
+int checkIfOutOfBounds(char *bp);
 static void printblock(void *bp); 
 
+static int LIFO_insert(char* bp);
+static int LIFO_remove(char* bp);
+static void *extend_heap(size_t words);
+static void *coalesce(void *bp);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -190,20 +191,15 @@ void *mm_malloc(size_t size)
     
 
     if(!bp) {                                           /* if there is no suitable free block we extend */
-        size_t size = (((MAX(new_size, CHUNKSIZE)) + 1) & -2);
-        if ((bp = mem_sbrk(size)) == (void *)-1) { return NULL; }
-
-        /* Initialize free block header/footer and the epilogue header */
-        PUT(HDRP(bp), PACK(size, 0));           /* free block header */
-        PUT(FTRP(bp), PACK(size, 0));           /* free block footer */
-        PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   /* new epilogue header */
-        heap_epilogue = NEXT_BLKP(bp);          /* update heap_epilogue pointer */
-        
-        bp = coalesce(bp);                      /* Coalesce if the previous block was free */
+        if((bp = extend_heap(MAX(new_size, CHUNKSIZE) >> 2)) == NULL) { return NULL; }
     }
 
     free_size = GET_SIZE(HDRP(bp)) - new_size;          /* remaining free block size */
     if(free_size >= (DSIZE + OVERHEAD)) {               /* the block is big enugh to be split */
+        #ifdef DEBUG
+        printf("split\n");
+        #endif
+        
         LIFO_remove(bp);
         PUT(FTRP(bp), PACK(free_size, 0));              /* update free footer size */
         PUT(HDRP(bp), PACK(new_size, 1));               /* update free haader with allocated header */  
@@ -212,6 +208,10 @@ void *mm_malloc(size_t size)
         LIFO_insert(NEXT_BLKP(bp));
     }
     else {                                              /* we pad */
+        #ifdef DEBUG
+        printf("padd\n");
+        #endif
+        
         LIFO_remove(bp);
         PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));     /* update the header allocation */
         PUT(FTRP(bp), PACK(GET_SIZE(FTRP(bp)), 1));     /* update the footer allocation */
@@ -241,6 +241,7 @@ void mm_free(void *bp)
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
     #endif
+
 }
 
 /*
@@ -248,9 +249,7 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    char* newptr;
-    char* nextptr;
-    char* prevptr;
+    void* newptr;
     size_t total_size;
     size_t new_size = ALIGN(size) + SIZE_T_SIZE;    /* make the size a multiple of 8 */
     if(ptr == NULL) {                               /* pointer is invalid, malloc new block*/
@@ -260,7 +259,10 @@ void *mm_realloc(void *ptr, size_t size)
         mm_free(ptr);
         return NULL;
     }
-    /* the size shrinks */
+    else if(new_size <= GET_SIZE(HDRP(ptr))) {      /* the block is big enugh no resize needed */
+        return ptr;
+    }
+    /* there is an adjacent free block, expand the alocation */
     else if(new_size <= (GET_SIZE(HDRP(ptr)) - (DSIZE + OVERHEAD))) {
         PUT(FTRP(ptr), PACK(GET_SIZE(HDRP(ptr)), 0));               /* update free footer size */
         PUT(HDRP(ptr), PACK(new_size, 1));                          /* update free header with allocated header */  
@@ -270,32 +272,7 @@ void *mm_realloc(void *ptr, size_t size)
         coalesce(NEXT_BLKP(ptr));
         return ptr;
     }
-    else if(new_size <= GET_SIZE(HDRP(ptr))) {      /* the block is big enugh no resize needed */
-        return ptr;
-    }
-    
-    /* both the next and prev block is free, expand the alocation */
-    else if(!GET_ALLOC(HDRP(nextptr = NEXT_BLKP(ptr))) && !GET_ALLOC(HDRP(prevptr = PREV_BLKP(ptr))) && (new_size <= (total_size = GET_SIZE(HDRP(nextptr)) + GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prevptr)) ))) {
-        LIFO_remove(nextptr);
-        LIFO_remove(prevptr);
-        memcpy(prevptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
-        if(total_size - new_size >= (DSIZE + OVERHEAD)) {
-            PUT(HDRP(prevptr), PACK(new_size, 1));                      /* update free haader with allocated header */  
-            PUT(FTRP(prevptr), PACK(new_size, 1));                      /* new allocated footer */
-            ptr = NEXT_BLKP(prevptr);
-            PUT(HDRP(ptr), PACK((total_size - new_size), 0));    /* new free header */
-            PUT(FTRP(ptr), PACK((total_size - new_size), 0));    /* update free footer size */
-            LIFO_insert(ptr);
-        }
-        else {
-            PUT(HDRP(prevptr), PACK(total_size, 1));    /* update the header allocation */
-            PUT(FTRP(prevptr), PACK(total_size, 1));    /* update the footer allocation */
-        }
-        return prevptr;
-    }
-    
-    /* the next block is free, expand the alocation */
-    else if((!GET_ALLOC(HDRP(newptr = NEXT_BLKP(ptr)))) && (new_size <= (total_size = GET_SIZE(HDRP(newptr)) + GET_SIZE(HDRP(ptr))))) {
+    else if((!GET_ALLOC(HDRP(newptr = NEXT_BLKP(ptr)))) && (new_size < (total_size = GET_SIZE(HDRP(newptr)) + GET_SIZE(HDRP(ptr))))) {
         LIFO_remove(newptr);
         if(total_size - new_size >= (DSIZE + OVERHEAD)) {
             PUT(HDRP(ptr), PACK(new_size, 1));                      /* update free haader with allocated header */  
@@ -311,31 +288,12 @@ void *mm_realloc(void *ptr, size_t size)
         }
         return ptr;
     }
-    /* the prev block is free, expand the alocation */
-    else if((!GET_ALLOC(HDRP(newptr = PREV_BLKP(ptr)))) && (new_size <= (total_size = GET_SIZE(HDRP(newptr)) + GET_SIZE(HDRP(ptr))))) {
-        LIFO_remove(newptr);
-        memcpy(newptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
-        if(total_size - new_size >= (DSIZE + OVERHEAD)) {
-            PUT(HDRP(newptr), PACK(new_size, 1));                      /* update free haader with allocated header */  
-            PUT(FTRP(newptr), PACK(new_size, 1));                      /* new allocated footer */
-            ptr = NEXT_BLKP(newptr);
-            PUT(HDRP(ptr), PACK((total_size - new_size), 0));    /* new free header */
-            PUT(FTRP(ptr), PACK((total_size - new_size), 0));    /* update free footer size */
-            LIFO_insert(ptr);
-        }
-        else {
-            PUT(HDRP(newptr), PACK(total_size, 1));    /* update the header allocation */
-            PUT(FTRP(newptr), PACK(total_size, 1));    /* update the footer allocation */
-        }
-        return newptr;
-    }
-    
     else {                                          /* the block needs to be reallocated */
         if ((newptr = mm_malloc(size)) == NULL) {
             printf("ERROR: mm_malloc failed in mm_realloc\n");
             exit(1);
         }
-        memcpy(newptr, ptr, ((size < (GET_SIZE(HDRP(ptr))) - WSIZE) ? size : (GET_SIZE(HDRP(ptr)) - WSIZE)));
+        memcpy(newptr, ptr, ((size < GET_SIZE(HDRP(ptr))) ? size : GET_SIZE(HDRP(ptr))));
         mm_free(ptr);
         return newptr;   
     }
@@ -343,7 +301,8 @@ void *mm_realloc(void *ptr, size_t size)
 
 /****************************** Helper Functions ********************************/
 /********************************************************************************/
-static void LIFO_insert(char* bp) {
+
+static int LIFO_insert(char* bp) {
     if(free_listp == (void*)NULL) {                       /* the list is empty */
         PUT(bp + WSIZE, 0);                     /* bp's next = 0 */
         PUT(bp, 0);                             /* bp's prev = 0 */
@@ -355,11 +314,13 @@ static void LIFO_insert(char* bp) {
         PUT(bp + WSIZE, (size_t)free_listp);    /* bp's next = the start of the free list */
         free_listp = bp;                        /* the freelist starts with fb */
     }
+    return 1;
 }
 
-static void LIFO_remove(char* bp) {
+static int LIFO_remove(char* bp) {
     if (NEXT_FREE_BLKP(bp) == 0 && PREV_FREE_BLKP(bp) == 0) {       /* bp is the only free block */
         free_listp = 0;
+        // printf("ran out of free blocks\n");
     } 
     else if (NEXT_FREE_BLKP(bp) != 0 && PREV_FREE_BLKP(bp) == 0) {  /* if next exists then bp is the start of the list */
         free_listp = NEXT_FREE_BLKP(bp);                                /* Next is now the start of the list */
@@ -369,20 +330,38 @@ static void LIFO_remove(char* bp) {
         PUT(PREV_FREE_BLKP(bp) + WSIZE, 0);                             /* Prev's next = 0 */
     }
     else {                                                          /* else bp is in the middle of the list */
-        //printf("bp %p", bp);
         PUT(PREV_FREE_BLKP(bp) + WSIZE, (size_t)NEXT_FREE_BLKP(bp));    /* Prev's next = next */ 
         PUT(NEXT_FREE_BLKP(bp), (size_t)PREV_FREE_BLKP(bp));            /* Next's prev = prev */
     }
+    return 1;
 }
 
-// static void place(void* bp) {
 
-// }
+/* 
+ * extend_heap - Extend heap with free block and return its block pointer
+ */
+static void *extend_heap(size_t words) 
+{
+    char *bp;
+    /* Allocate an even number of words to maintain alignment */
+    size_t size = ((words+1) & -2) << 2;
+    if ((bp = mem_sbrk(size)) == (void *)-1) { 
+        printf("didnt work trry again later\n");
+        return NULL; }
+
+    /* Initialize free block header/footer and the epilogue header */
+    PUT(HDRP(bp), PACK(size, 0));           /* free block header */
+    PUT(FTRP(bp), PACK(size, 0));           /* free block footer */
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   /* new epilogue header */
+    heap_epilogue = NEXT_BLKP(bp);          /* update heap_epilogue pointer */
+    
+    return coalesce(bp);                    /* Coalesce if the previous block was free */
+}
 
 /*
  * coalesce - boundary tag coalescing. Return ptr to coalesced block
  */
-static void *coalesce(void* bp) 
+static void *coalesce(void *bp) 
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
@@ -413,7 +392,7 @@ static void *coalesce(void* bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-    LIFO_insert(bp);                            /* add coalesed block to the free list */
+    LIFO_insert(bp);                        /* add coalesed block to the free list */
 
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -483,7 +462,7 @@ int mm_check(int verbose)
  * - checkFreeBlockIsInFreeList -
  * Returns a non zero number if a free block is in the free list.
  */
-static int checkFreeBlockIsInFreeList(char *bp) 
+int checkFreeBlockIsInFreeList(char *bp) 
 {
     if(GET_ALLOC(HDRP(bp)) == 0) {      /* if block is free */
         for(char *f_list = free_listp; f_list != 0; f_list = NEXT_FREE_BLKP(f_list)) {
@@ -499,7 +478,7 @@ static int checkFreeBlockIsInFreeList(char *bp)
 /*
  * - checkValidHeap -
  */
-static int checkValidBlock(char *bp) 
+int checkValidBlock(char *bp) 
 {
     if((size_t)bp & 0x7) {
         printf("Error: %p is not 8bit aligned\n", bp);
@@ -512,7 +491,7 @@ static int checkValidBlock(char *bp)
     return 1; /* block passed */
 }
 
-static int checkBlockOverlap(char *bp) 
+int checkBlockOverlap(char *bp) 
 {
     if (FTRP(bp) > HDRP(NEXT_BLKP(bp))) {
         printf("Error: blocks %p and %p overlap\n", bp, NEXT_BLKP(bp));
@@ -521,7 +500,7 @@ static int checkBlockOverlap(char *bp)
     return 1;
 }
 
-static int checkIfTwoContinuousFreeBlocks(char *bp) 
+int checkIfTwoContinuousFreeBlocks(char *bp) 
 {
     if(GET_ALLOC(HDRP(bp)) == 0) { // 2 adjecent free blocks ?
         if(GET_ALLOC(HDRP(NEXT_BLKP(bp))) == 0) {
@@ -532,7 +511,7 @@ static int checkIfTwoContinuousFreeBlocks(char *bp)
     return 1;
 }
 
-static int checkIfOutOfBounds(char *bp) 
+int checkIfOutOfBounds(char *bp) 
 {
     if(heap_epilogue < NEXT_BLKP(bp)) { /* The pointers in the free block point out of bounds */
         printf("Error: the block %p is out of bounds: heap_epilogue:%p < NEXT_BLKP(bp):%p\n", bp, heap_epilogue, NEXT_BLKP(bp));

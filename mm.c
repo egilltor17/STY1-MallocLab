@@ -137,8 +137,8 @@ static char *heap_epilogue;  /* pointer to the end of heap */
 static char *free_listp;     /* pointer to the start of free list */
 
 /* function prototypes for internal helper routines */
-static void LIFO_insert(char* bp);
-static void LIFO_remove(char* bp);
+static void Free_list_insert(char* bp);
+static void Free_list_remove(char* bp);
 static void *coalesce(void *bp);
 static void* place(void* bp, size_t block_size, size_t new_size);
 
@@ -214,7 +214,7 @@ void *mm_malloc(size_t size)
         bp = coalesce(bp);                      /* Coalesce if the previous block was free */
     }
     /* helper functions to allocate space */
-    LIFO_remove(bp);
+    Free_list_remove(bp);
     place(bp, GET_SIZE(HDRP(bp)), new_size);
 
     #ifdef DEBUG
@@ -270,19 +270,19 @@ void *mm_realloc(void *ptr, size_t size)
     /* both the next and prev blocks are free and are enough space for the realloc, expand the allocation, move the payload and return */
     else if(!GET_ALLOC(HDRP(nextptr = NEXT_BLKP(ptr))) && !GET_ALLOC(HDRP(prevptr = PREV_BLKP(ptr))) 
             && (new_size <= (block_size = GET_SIZE(HDRP(nextptr)) + GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prevptr)) ))) {
-        LIFO_remove(nextptr);
-        LIFO_remove(prevptr);
+        Free_list_remove(nextptr);
+        Free_list_remove(prevptr);
         memcpy(prevptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
         return place(prevptr, block_size, new_size);
     }
     /* the next block is free, expand the allocation and return */
     else if((!GET_ALLOC(HDRP(nextptr = NEXT_BLKP(ptr)))) && (new_size <= (block_size = GET_SIZE(HDRP(nextptr)) + GET_SIZE(HDRP(ptr))))) {
-        LIFO_remove(nextptr);
+        Free_list_remove(nextptr);
         return place(ptr, block_size, new_size);
     }
     /* the prev block is free, expand the allocation, move the payload and return */
     else if((!GET_ALLOC(HDRP(prevptr = PREV_BLKP(ptr)))) && (new_size <= (block_size = GET_SIZE(HDRP(prevptr)) + GET_SIZE(HDRP(ptr))))) {
-        LIFO_remove(prevptr);
+        Free_list_remove(prevptr);
         memcpy(prevptr, ptr, GET_SIZE(HDRP(ptr) - WSIZE));
         return place(prevptr, block_size, new_size);
     }
@@ -303,7 +303,7 @@ void *mm_realloc(void *ptr, size_t size)
 /* 
  * insert a free block in to the free list
  */
-static void LIFO_insert(char* bp) {
+static void Free_list_insert(char* bp) {
     if(free_listp == (void*)NULL) {             /* the list is empty */
         PUT(bp + WSIZE, 0);                     /* bp's next = 0 */
         PUT(bp, 0);                             /* bp's prev = 0 */
@@ -334,7 +334,7 @@ static void LIFO_insert(char* bp) {
 /*
  * remove a block from the free list
  */
-static void LIFO_remove(char* bp) {
+static void Free_list_remove(char* bp) {
     char* next = NEXT_FREE_BLKP(bp);
     char* prev = PREV_FREE_BLKP(bp);
     if (!next & !prev) {            /* bp is the only free block */
@@ -363,7 +363,7 @@ static void* place(void* bp, size_t block_size, size_t new_size) {
             void* fp = NEXT_BLKP(bp);
             PUT(HDRP(fp), PACK(free_size, 0));      /* new free header */
             PUT(FTRP(fp), PACK(free_size, 0));      /* update free footer size */
-            LIFO_insert(fp);
+            Free_list_insert(fp);
     }
     else {                                   /* the block is not big enough to be split, we pad */
         PUT(HDRP(bp), PACK(block_size, 1));    /* update the header allocation */
@@ -385,28 +385,28 @@ static void *coalesce(void* bp)
         //do nothing
     }
     else if (prev_alloc) {                      /* Case 2: Next block is free */
-        LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
+        Free_list_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     }
     else if (next_alloc) {                      /* Case 3: Previous block is free */
-        LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
+        Free_list_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
     else {                                      /* Case 4: Both blocks are free  */
-        LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
-        LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
+        Free_list_remove(NEXT_BLKP(bp));             /* remove next block from free list */
+        Free_list_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
             GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-    LIFO_insert(bp);                            /* add coalesced block to the free list */
+    Free_list_insert(bp);                            /* add coalesced block to the free list */
 
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -427,7 +427,7 @@ static void *coalesce(void* bp)
  */ 
 int mm_check(int verbose) 
 {
-    /*    ToDo:
+    /*
      * Is every block in the free list marked as free?                          - Done
      * Are there any contiguous free blocks that somehow escaped coalescing?    - Done
      * Is every free block actually in the free list?                           - Done
@@ -435,9 +435,6 @@ int mm_check(int verbose)
      * Do any allocated blocks overlap?                                         - Done
      * Do the pointers in a heap block point to valid heap addresses?           - Done
      */ 
-
-    // char *bp = heap_prologue;    /* pointer to the beginning of the heap */
-    // char *f_list = free_listp;  /* pointer to the end of the heap */
     /* Run through the heap implicitly */
     char *bp;
     for (bp = heap_prologue; GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)) { /* check all blocks on heap */
@@ -464,8 +461,8 @@ int mm_check(int verbose)
             return 0;
         }
 
-        if(GET_ALLOC(HDRP(f_list))) {   /* The block is alocated */
-            printf("Error: the free block %p is not free (alocated)\n", f_list);
+        if(GET_ALLOC(HDRP(f_list))) {   /* The block is allocated */
+            printf("Error: the free block %p is not free (allocated)\n", f_list);
             return 0;
         }
     }  

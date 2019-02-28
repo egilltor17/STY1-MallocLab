@@ -135,7 +135,6 @@ team_t team = {
 static char *heap_prologue;  /* pointer to the start of heap */
 static char *heap_epilogue;  /* pointer to the end of heap */
 static char *free_listp;     /* pointer to the start of free list */
-//static char *skip_listp;     /* pointer to the start of skip list */
 
 /* function prototypes for internal helper routines */
 static void LIFO_insert(char* bp);
@@ -202,7 +201,7 @@ void *mm_malloc(size_t size)
         bp = NEXT_FREE_BLKP(bp);
     }
     bp = bestp;
-    if(!bp) {                                           /* if there is no suitable free block we extend */
+    if(!bp) {                                   /* if there is no suitable free block we extend */
         size_t size = (((MAX(new_size, CHUNKSIZE)) + 1) & -2);
         if ((bp = mem_sbrk(size)) == (void *)-1) { return NULL; }
 
@@ -226,8 +225,7 @@ void *mm_malloc(size_t size)
 }
 
 /*
- * mm_free - Freeing a block does nothing.
- * ToDo: we want to mark the area as free and update surrounding headers if necessary
+ * mm_free - Free a block that has been allocated.
  */
 void mm_free(void *bp)
 {
@@ -302,6 +300,9 @@ void *mm_realloc(void *ptr, size_t size)
 }
 /****************************** Helper Functions ********************************/
 /********************************************************************************/
+/* 
+ * insert a free block in to the free list
+ */
 static void LIFO_insert(char* bp) {
     if(free_listp == (void*)NULL) {             /* the list is empty */
         PUT(bp + WSIZE, 0);                     /* bp's next = 0 */
@@ -330,7 +331,9 @@ static void LIFO_insert(char* bp) {
         free_listp = bp;                        /* the freelist starts with fb */
     }
 }
-
+/*
+ * remove a block from the free list
+ */
 static void LIFO_remove(char* bp) {
     char* next = NEXT_FREE_BLKP(bp);
     char* prev = PREV_FREE_BLKP(bp);
@@ -349,7 +352,9 @@ static void LIFO_remove(char* bp) {
         PUT(next, (size_t)prev);            /* Next's prev = prev */
     }
 }
-
+/*
+ * place a block in the heap
+ */
 static void* place(void* bp, size_t block_size, size_t new_size) {
     size_t free_size = block_size - new_size;   /* remaining free block size */
     if(free_size >= (DSIZE + OVERHEAD)) {    /* the block is big enough to be split */
@@ -379,13 +384,13 @@ static void *coalesce(void* bp)
     if (prev_alloc && next_alloc) {             /* Case 1: Both blocks are allocated, no coalessing reqired */
         //do nothing
     }
-    else if (prev_alloc) {       /* Case 2: Next block is free */
+    else if (prev_alloc) {                      /* Case 2: Next block is free */
         LIFO_remove(NEXT_BLKP(bp));             /* remove next block from free list */
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     }
-    else if (next_alloc) {       /* Case 3: Previous block is free */
+    else if (next_alloc) {                      /* Case 3: Previous block is free */
         LIFO_remove(PREV_BLKP(bp));             /* remove prev block from free list */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
@@ -401,7 +406,7 @@ static void *coalesce(void* bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-    LIFO_insert(bp);                            /* add coalesed block to the free list */
+    LIFO_insert(bp);                            /* add coalesced block to the free list */
 
     #ifdef DEBUG
     printf("%s\n", __func__); mm_check(1);
@@ -414,9 +419,9 @@ static void *coalesce(void* bp)
 /********************************************************************************/
 
 /*
- * mm_check - Checks the integrety and consitancy of the heap.
+ * mm_check - Checks the integrety and consistancy of the heap.
  * 
- * The checker is written for our pending implenentation so we are ....
+ * The checker is written for our pending implementation.
  * 
  * Returns a nonzero value if and only if the heap is consistent.
  */ 
@@ -427,7 +432,7 @@ int mm_check(int verbose)
      * Are there any contiguous free blocks that somehow escaped coalescing?    - Done
      * Is every free block actually in the free list?                           - Done
      * Do the pointers in the free list point to valid free blocks?             - Done
-     * Do any allocated blocks overlap?                                         - Semi
+     * Do any allocated blocks overlap?                                         - Done
      * Do the pointers in a heap block point to valid heap addresses?           - Done
      */ 
 

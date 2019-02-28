@@ -98,7 +98,7 @@ size_t mem_pagesize(void);  Returns the system’s page size in bytes (4K on Lin
 /* Basic constants and macros */
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
-#define CHUNKSIZE  (1<<9)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -263,16 +263,13 @@ void *mm_realloc(void *ptr, size_t size)
     size_t total_size;
     size_t new_size = ALIGN(size) + SIZE_T_SIZE;    /* make the size a multiple of 8 */
     if(ptr == NULL) {
-        printf("case-1\n");
         return mm_malloc(size);
     }
     else if(size == 0) {
-        printf("case0\n");
         mm_free(ptr);
         return NULL;
     }
     else if(new_size <= (GET_SIZE(HDRP(ptr)) - (DSIZE + OVERHEAD))) {
-        //printf("%s\n", __func__); mm_check(1);
         PUT(FTRP(ptr), PACK(GET_SIZE(HDRP(ptr)), 0));              /* update free footer size */
         PUT(HDRP(ptr), PACK(new_size, 1));               /* update free header with allocated header */  
         PUT(FTRP(ptr), PACK(new_size, 1));               /* new allocated footer */
@@ -285,7 +282,6 @@ void *mm_realloc(void *ptr, size_t size)
         return ptr;
     }
     else if((!GET_ALLOC(HDRP(newptr = NEXT_BLKP(ptr)))) && (new_size < (total_size = GET_SIZE(HDRP(newptr)) + GET_SIZE(HDRP(ptr))))) {
-        //printf("case2\n");
         LIFO_remove(newptr);
         if(total_size - new_size >= (DSIZE + OVERHEAD)) {
             PUT(HDRP(ptr), PACK(new_size, 1));               /* update free haader with allocated header */  
@@ -299,12 +295,6 @@ void *mm_realloc(void *ptr, size_t size)
             PUT(HDRP(ptr), PACK(total_size, 1));     /* update the header allocation */
             PUT(FTRP(ptr), PACK(total_size, 1));     /* update the footer allocation */
         }
-        // LIFO_remove(NEXT_BLKP(ptr));             /* remove next block from free list */
-        // PUT(FTRP(ptr), PACK(GET_SIZE(HDRP(ptr)), 0));              /* update free footer size */
-        // PUT(HDRP(ptr), PACK(new_size, 1));               /* update free header with allocated header */  
-        // PUT(FTRP(ptr), PACK(new_size, 1));               /* new allocated footer */
-        // PUT(HDRP(NEXT_BLKP(ptr)), PACK(GET_SIZE(HDRP(ptr)), 0));   /* new free header */
-        // LIFO_insert(NEXT_BLKP(ptr));
          return ptr;
     }
     else {
@@ -312,11 +302,9 @@ void *mm_realloc(void *ptr, size_t size)
         size_t copySize;
 
         if ((newp = mm_malloc(size)) == NULL) {
-            printf("case3\n");
             printf("ERROR: mm_malloc failed in mm_realloc\n");
             exit(1);
         }
-        //printf("case4\n");
         copySize = GET_SIZE(HDRP(ptr));
         if (size < copySize) {
             copySize = size;

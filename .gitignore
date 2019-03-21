@@ -5,3 +5,7 @@ mdriver
 # IDE
 .vs
 .vscode
+
+# Report
+*.pdf
+*.docx
